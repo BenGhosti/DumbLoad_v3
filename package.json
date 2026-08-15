@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "dumbload",
   "version": "1.0.2",
   "main": "src/server.js",
@@ -16,6 +16,7 @@
   "license": "ISC",
   "description": "A simple file upload application",
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
     "apprise": "^1.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

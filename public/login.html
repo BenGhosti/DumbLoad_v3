@@ -6,6 +6,7 @@
     <title>{{SITE_TITLE}} - Login</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+    <script src="webauthn.js"></script>
     <style>
         .login-container {
             display: flex;
@@ -53,17 +54,68 @@
             border-color: var(--danger-color);
             background-color: var(--textarea-bg);
         }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            color: var(--text-color);
+            opacity: 0.5;
+            font-size: 0.9rem;
+            width: 100%;
+            max-width: 300px;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .passkey-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .passkey-btn:hover {
+            background: var(--highlight-hover);
+        }
+        .passkey-btn:disabled {
+            background: var(--border-color);
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
     <div class="login-container">
         <div class="pin-header">
             <h1>{{SITE_TITLE}}</h1>
-            <h2>Enter PIN</h2>
+            <h2 id="login-subtitle">Login</h2>
         </div>
-        <form id="pin-form">
-            <!-- PIN inputs will be dynamically added here -->
-        </form>
+        <div id="pin-section" style="display: none;">
+            <form id="pin-form">
+                <!-- PIN inputs will be dynamically added here -->
+            </form>
+        </div>
+        <div id="passkey-section" style="display: none;">
+            <div class="divider">or</div>
+            <button id="passkey-btn" class="passkey-btn" type="button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                Login with Passkey
+            </button>
+        </div>
         <p id="pin-error" class="error-message"></p>
     </div>
 
@@ -129,30 +181,24 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pin }),
-                    credentials: 'include', // Ensure cookies are sent
-                    // redirect: 'follow' // Follow server redirects
+                    credentials: 'include'
                 });
                 const data = await response.json();
                 
-                // Simplified success and error handling
                 if (data.success) {
                     window.location.href = '/';
                 } else {
-                    // Show error message
                     document.getElementById('pin-error').textContent = data.error || 'Authentication failed';
                     
-                    // Determine if it's a lockout scenario
-                    const isLockedOut = data.error.includes('Too many PIN verification attempts');
+                    const isLockedOut = data.error && data.error.includes('Too many PIN verification attempts');
                     
                     const inputs = [...document.querySelectorAll('.pin-digit')];
                     if (isLockedOut) {
-                        // Disable inputs if locked out
                         inputs.forEach(input => {
                             input.disabled = true;
                             input.classList.add('locked');
                         });
                     } else {
-                        // Reset inputs for other error types
                         inputs.forEach(input => {
                             input.value = '';
                             input.classList.remove('filled');
@@ -180,7 +226,6 @@
                         inputs[index - 1].classList.remove('filled');
                     }
                 });
-                // Handle paste event
                 input.addEventListener('paste', (e) => {
                     e.preventDefault();
                     const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, inputs.length);
@@ -208,12 +253,65 @@
                 }
             });
 
-            // Focus first input
             inputs[0].focus();
         };
 
-        // Check PIN length and initialize
-        fetch('/api/auth/pin-required')
+        // Passkey login
+        const loginWithPasskey = async () => {
+            const errorEl = document.getElementById('pin-error');
+            const btn = document.getElementById('passkey-btn');
+            btn.disabled = true;
+            errorEl.textContent = '';
+
+            try {
+                // 1. Get authentication options
+                const optionsResponse = await fetch('/api/passkey/auth-options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                    credentials: 'include'
+                });
+                const optionsData = await optionsResponse.json();
+                if (!optionsData.challengeId) {
+                    throw new Error('Failed to get authentication options');
+                }
+
+                // 2. Request credential from authenticator
+                const credential = await navigator.credentials.get({
+                    publicKey: toAuthOptions(optionsData.options)
+                });
+
+                // 3. Verify on server
+                const verifyResponse = await fetch('/api/passkey/auth-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        challengeId: optionsData.challengeId,
+                        response: authToJSON(credential)
+                    }),
+                    credentials: 'include'
+                });
+                const verifyData = await verifyResponse.json();
+
+                if (verifyData.success) {
+                    window.location.href = '/';
+                } else {
+                    errorEl.textContent = verifyData.error || 'Passkey authentication failed';
+                }
+            } catch (err) {
+                if (err.name === 'NotAllowedError') {
+                    errorEl.textContent = 'Passkey authentication cancelled';
+                } else {
+                    console.error('Passkey login error:', err);
+                    errorEl.textContent = 'Passkey authentication failed: ' + (err.message || err);
+                }
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        // Check auth status and initialize
+        fetch('/api/auth/status')
             .then(response => {
                 if (response.status === 429) {
                     throw new Error('Too many attempts. Please wait before trying again.');
@@ -221,26 +319,41 @@
                 return response.json();
             })
             .then(data => {
-                if (data.required) {
-                    pinLength = data.length;
+                // If no auth is required, redirect to main page
+                if (!data.required) {
+                    window.location.href = '/';
+                    return;
+                }
+
+                const showPin = data.authMode === 'pin' || data.authMode === 'both';
+                const showPasskey = (data.authMode === 'passkey' || data.authMode === 'both') && data.hasPasskeys;
+
+                if (showPin && data.pinRequired) {
+                    document.getElementById('pin-section').style.display = 'block';
+                    document.getElementById('login-subtitle').textContent = 'Enter PIN';
+                    pinLength = data.pinLength;
                     createPinInputs(pinLength);
                     setupPinHandling();
-                } else {
-                    window.location.href = '/';
+                }
+
+                if (showPasskey) {
+                    document.getElementById('passkey-section').style.display = 'block';
+                    document.getElementById('passkey-btn').addEventListener('click', loginWithPasskey);
+                    // Hide the "or" divider if only passkey is shown
+                    if (!showPin || !data.pinRequired) {
+                        document.querySelector('.divider').style.display = 'none';
+                        document.getElementById('login-subtitle').textContent = 'Login with Passkey';
+                    }
+                }
+
+                // Fallback: if neither PIN nor passkey is available but auth is required
+                if ((!showPin || !data.pinRequired) && !showPasskey) {
+                    document.getElementById('pin-error').textContent = 'No authentication method available. Please contact the administrator.';
                 }
             })
             .catch(err => {
-                console.error('Error checking PIN requirement:', err);
-                const errorMessage = err.message === 'Too many attempts. Please wait before trying again.' 
-                    ? err.message 
-                    : 'Error checking PIN requirement';
-                document.getElementById('pin-error').textContent = errorMessage;
-                // Prevent refresh loop by disabling the PIN input form
-                const pinContainer = document.getElementById('pin-container');
-                if (pinContainer) {
-                    pinContainer.style.opacity = '0.5';
-                    pinContainer.style.pointerEvents = 'none';
-                }
+                console.error('Error checking auth status:', err);
+                document.getElementById('pin-error').textContent = err.message || 'Error checking authentication status';
             });
     </script>
 </body>

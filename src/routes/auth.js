@@ -13,6 +13,7 @@ const {
 } = require('../utils/security');
 const { createSession, destroySession, SESSION_DURATION } = require('../utils/session');
 const { getClientIp } = require('../utils/ipExtractor');
+const { isAuthRequired } = require('../middleware/security');
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -114,6 +115,28 @@ router.get('/pin-required', (req, res) => {
   } catch (err) {
     logger.error(`PIN check error: ${err.message}`);
     res.status(500).json({ error: 'Failed to check PIN status' });
+  }
+});
+
+/**
+ * Get full authentication status (mode, PIN length, passkey availability)
+ * Used by the login page to render the correct UI
+ */
+router.get('/status', async (req, res) => {
+  try {
+    const passkeyStore = require('../services/passkeyStore');
+    const passkeyCount = await passkeyStore.getPasskeyCount();
+
+    res.json({
+      required: isAuthRequired(),
+      authMode: config.authMode,
+      pinRequired: !!config.pin,
+      pinLength: config.pin ? config.pin.length : 0,
+      hasPasskeys: passkeyCount > 0
+    });
+  } catch (err) {
+    logger.error(`Auth status check error: ${err.message}`);
+    res.status(500).json({ error: 'Failed to check auth status' });
   }
 });
 

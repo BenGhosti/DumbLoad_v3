@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{SITE_TITLE}} - Passkey Management</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+    <script src="webauthn.js"></script>
+    <style>
+        .admin-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        .admin-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+        .back-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .add-section {
+            background: var(--container-bg);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+        .add-section h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+        .add-form {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .add-form input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-size: 0.95rem;
+        }
+        .add-form input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        .passkey-list {
+            background: var(--container-bg);
+            border-radius: 10px;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+        .passkey-list h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+        .passkey-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.9rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .passkey-item:last-child {
+            border-bottom: none;
+        }
+        .passkey-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .passkey-name {
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 0.2rem;
+        }
+        .passkey-meta {
+            font-size: 0.8rem;
+            color: var(--text-color);
+            opacity: 0.6;
+        }
+        .remove-btn {
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .remove-btn:hover {
+            background: #c0392b;
+        }
+        .empty-message {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-color);
+            opacity: 0.5;
+            font-style: italic;
+        }
+        .status-message {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .status-message.success {
+            display: block;
+            background: rgba(76, 175, 80, 0.15);
+            color: #4CAF50;
+        }
+        .status-message.error {
+            display: block;
+            background: rgba(244, 67, 54, 0.15);
+            color: var(--danger-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>Passkey Management</h1>
+            <a href="/" class="back-link">Back to Upload</a>
+        </div>
+
+        <div class="add-section">
+            <h2>Add a new Passkey</h2>
+            <div class="add-form">
+                <input type="text" id="passkey-name" placeholder="Key name (e.g. Büro-Key, Handy)" maxlength="50">
+                <button id="add-passkey-btn" type="button">Add Passkey</button>
+            </div>
+            <div id="status-message" class="status-message"></div>
+        </div>
+
+        <div class="passkey-list">
+            <h2>Registered Passkeys</h2>
+            <div id="passkey-list-container">
+                <div class="empty-message">Loading passkeys...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        const statusMessage = (text, type) => {
+            const el = document.getElementById('status-message');
+            el.textContent = text;
+            el.className = 'status-message ' + type;
+            setTimeout(() => { el.className = 'status-message'; }, 4000);
+        };
+
+        const loadPasskeys = async () => {
+            const container = document.getElementById('passkey-list-container');
+            try {
+                const response = await fetch('/api/passkey/list', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+                const data = await response.json();
+                const keys = data.passkeys || [];
+
+                if (keys.length === 0) {
+                    container.innerHTML = '<div class="empty-message">No passkeys registered yet</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                keys.forEach(key => {
+                    const item = document.createElement('div');
+                    item.className = 'passkey-item';
+
+                    const info = document.createElement('div');
+                    info.className = 'passkey-info';
+                    const name = document.createElement('div');
+                    name.className = 'passkey-name';
+                    name.textContent = key.name || 'Unbenannter Schlüssel';
+                    const meta = document.createElement('div');
+                    meta.className = 'passkey-meta';
+                    const created = key.createdAt ? new Date(key.createdAt).toLocaleString() : 'unknown';
+                    const lastUsed = key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : 'never';
+                    meta.textContent = `Created: ${created} • Last used: ${lastUsed}`;
+                    info.appendChild(name);
+                    info.appendChild(meta);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-btn';
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.addEventListener('click', () => removePasskey(key.id, key.name));
+
+                    item.appendChild(info);
+                    item.appendChild(removeBtn);
+                    container.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Failed to load passkeys:', err);
+                container.innerHTML = '<div class="empty-message">Failed to load passkeys</div>';
+            }
+        };
+
+        const removePasskey = async (credentialId, name) => {
+            if (!confirm(`Are you sure you want to remove the passkey "${name}"?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/passkey/${encodeURIComponent(credentialId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    statusMessage(`Passkey "${name}" removed`, 'success');
+                    loadPasskeys();
+                } else {
+                    const data = await response.json();
+                    statusMessage(data.error || 'Failed to remove passkey', 'error');
+                }
+            } catch (err) {
+                console.error('Failed to remove passkey:', err);
+                statusMessage('Failed to remove passkey', 'error');
+            }
+        };
+
+        const addPasskey = async () => {
+            const nameInput = document.getElementById('passkey-name');
+            const name = nameInput.value.trim();
+            const btn = document.getElementById('add-passkey-btn');
+
+            if (!name) {
+                statusMessage('Please enter a name for the passkey', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            try {
+                // 1. Get registration options
+                const optionsResponse = await fetch('/api/passkey/register-options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name }),
+                    credentials: 'include'
+                });
+                const optionsData = await optionsResponse.json();
+                if (!optionsData.challengeId) {
+                    throw new Error('Failed to get registration options');
+                }
+
+                // 2. Create credential
+                const credential = await navigator.credentials.create({
+                    publicKey: toRegistrationOptions(optionsData.options)
+                });
+
+                // 3. Verify on server
+                const verifyResponse = await fetch('/api/passkey/register-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        challengeId: optionsData.challengeId,
+                        response: registrationToJSON(credential),
+                        name
+                    }),
+                    credentials: 'include'
+                });
+                const verifyData = await verifyResponse.json();
+
+                if (verifyData.success) {
+                    statusMessage(`Passkey "${name}" added successfully`, 'success');
+                    nameInput.value = '';
+                    loadPasskeys();
+                } else {
+                    statusMessage(verifyData.error || 'Registration failed', 'error');
+                }
+            } catch (err) {
+                if (err.name === 'NotAllowedError') {
+                    statusMessage('Registration cancelled', 'error');
+                } else {
+                    console.error('Passkey registration error:', err);
+                    statusMessage('Registration failed: ' + (err.message || err), 'error');
+                }
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        document.getElementById('add-passkey-btn').addEventListener('click', addPasskey);
+        document.getElementById('passkey-name').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addPasskey();
+        });
+
+        loadPasskeys();
+    </script>
+</body>
+</html>

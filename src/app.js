@@ -15,12 +15,13 @@ const fsPromises = require('fs').promises;
 const { config, validateConfig } = require('./config');
 const logger = require('./utils/logger');
 const { ensureDirectoryExists } = require('./utils/fileUtils');
-const { getHelmetConfig, requirePin } = require('./middleware/security');
+const { getHelmetConfig, requirePin, requireAuth, isAuthRequired } = require('./middleware/security');
 const { safeCompare } = require('./utils/security');
 const { isValidSession } = require('./utils/session');
 const { initUploadLimiter, pinVerifyLimiter, pinStatusLimiter, downloadLimiter } = require('./middleware/rateLimiter');
 const { injectDemoBanner, demoMiddleware } = require('./utils/demoMode');
 const { originValidationMiddleware, getCorsOptions } = require('./middleware/cors');
+const { loadPasskeys } = require('./services/passkeyStore');
 
 // Create Express app
 const app = express();
@@ -60,6 +61,9 @@ app.use((req, res, next) => {
     '/api/auth/verify-pin',
     '/api/auth/pin-required',
     '/api/auth/pin-length',
+    '/api/auth/status',
+    '/api/passkey/auth-options',
+    '/api/passkey/auth-verify',
     '/pin-length',
     '/verify-pin',
     '/config.js',
@@ -85,21 +89,29 @@ app.use((req, res, next) => {
 const { router: uploadRouter } = require('./routes/upload');
 const fileRoutes = require('./routes/files');
 const authRoutes = require('./routes/auth');
+const passkeyRoutes = require('./routes/passkey');
 
 // Use routes with appropriate middleware
 // Apply strict rate limiting to PIN verification, but more permissive to status checks
 app.use('/api/auth/pin-required', pinStatusLimiter);
 app.use('/api/auth/logout', pinStatusLimiter);
+app.use('/api/auth/status', pinStatusLimiter);
 app.use('/api/auth', pinVerifyLimiter, authRoutes);
+
+// Passkey routes: auth endpoints public (rate-limited), management endpoints require auth (handled in router)
+app.use('/api/passkey/auth-options', pinStatusLimiter);
+app.use('/api/passkey/auth-verify', pinVerifyLimiter);
+app.use('/api/passkey', passkeyRoutes);
+
 app.use('/api/upload', requirePin(config.pin), initUploadLimiter, uploadRouter);
 app.use('/api/files', requirePin(config.pin), downloadLimiter, fileRoutes);
 
 // Root route
 app.get('/', (req, res) => {
-  // Check if the PIN is configured and a valid session exists
+  // Check if authentication is required and a valid session exists
   const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
   const hasValidPinCookie = req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
-  if (config.pin && !hasValidSession && !hasValidPinCookie) {
+  if (isAuthRequired() && !hasValidSession && !hasValidPinCookie) {
     return res.redirect('/login.html');
   }
   
@@ -123,6 +135,20 @@ app.get('/login.html', (req, res) => {
   
   let html = fs.readFileSync(path.join(__dirname, '../public', 'login.html'), 'utf8');
   html = html.replace(/{{SITE_TITLE}}/g, config.siteTitle);
+  html = injectDemoBanner(html);
+  res.send(html);
+});
+
+// Secret admin route for passkey management (requires authentication)
+app.get(config.adminPath, requireAuth(), (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  
+  let html = fs.readFileSync(path.join(__dirname, '../public', 'admin.html'), 'utf8');
+  html = html.replace(/{{SITE_TITLE}}/g, config.siteTitle);
+  html = html.replace('{{ADMIN_PATH}}', config.adminPath);
+  html = html.replace('{{RP_ID}}', config.rpId);
   html = injectDemoBanner(html);
   res.send(html);
 });
@@ -204,6 +230,14 @@ async function initialize() {
         throw new Error(`Failed to access or create metadata directory: ${METADATA_DIR}`);
     }
     // --- End added section ---
+    
+    // Preload passkeys so auth checks have accurate state at startup
+    try {
+      const count = await loadPasskeys();
+      logger.info(`Passkeys loaded: ${count.length} registered (auth mode: ${config.authMode})`);
+    } catch (err) {
+      logger.error(`Failed to preload passkeys: ${err.message}`);
+    }
     
     // Log configuration
     logger.info(`Maximum file size set to: ${config.maxFileSize / (1024 * 1024)}MB`);

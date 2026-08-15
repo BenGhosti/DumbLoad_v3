@@ -21,6 +21,9 @@ const fs = require('fs'); // Get version from package.json
  * APPRISE_MESSAGE     - Notification message template (default provided)
  * APPRISE_SIZE_UNIT   - Size unit for notifications (optional)
  * ALLOWED_EXTENSIONS  - Comma-separated list of allowed file extensions (optional)
+ * DUMBLOAD_AUTH_MODE  - Authentication mode: 'pin', 'passkey', or 'both' (default: 'pin')
+ * DUMBLOAD_RP_ID      - WebAuthn Relying Party ID (default: hostname from BASE_URL)
+ * DUMBLOAD_ADMIN_PATH - Secret admin path for passkey management (default: '/admin/passkeys')
  */
 
 // Helper for clear configuration logging
@@ -246,6 +249,54 @@ const config = {
   })(),
 
   uploadPin: logAndReturn('UPLOAD_PIN', process.env.UPLOAD_PIN || null),
+
+  // =====================
+  // =====================
+  // WebAuthn / Passkey settings
+  // =====================
+  /**
+   * Authentication mode: 'pin', 'passkey', or 'both'
+   * Set via DUMBLOAD_AUTH_MODE in .env
+   */
+  authMode: (() => {
+    const mode = (process.env.DUMBLOAD_AUTH_MODE || 'pin').toLowerCase();
+    return ['pin', 'passkey', 'both'].includes(mode) ? mode : 'pin';
+  })(),
+  /**
+   * WebAuthn Relying Party ID (default: hostname from BASE_URL)
+   * Set via DUMBLOAD_RP_ID in .env
+   */
+  rpId: (() => {
+    if (process.env.DUMBLOAD_RP_ID) return process.env.DUMBLOAD_RP_ID;
+    try {
+      return new URL(BASE_URL).hostname;
+    } catch (e) {
+      return 'localhost';
+    }
+  })(),
+  /**
+   * WebAuthn Relying Party name (default: site title)
+   */
+  rpName: process.env.DUMBLOAD_RP_NAME || process.env.DUMBLOAD_TITLE || DEFAULT_SITE_TITLE,
+  /**
+   * WebAuthn Relying Party origin (default: BASE_URL origin)
+   */
+  rpOrigin: (() => {
+    try {
+      return new URL(BASE_URL).origin;
+    } catch (e) {
+      return BASE_URL;
+    }
+  })(),
+  /**
+   * Secret admin path for passkey management
+   * Set via DUMBLOAD_ADMIN_PATH in .env
+   */
+  adminPath: process.env.DUMBLOAD_ADMIN_PATH || '/admin/passkeys',
+  /**
+   * Path to the passkey storage file
+   */
+  passkeyFilePath: require('path').join(resolvedUploadDir, '.passkeys.json'),
 };
 
 console.log(`Upload directory configured as: ${config.uploadDir}`);

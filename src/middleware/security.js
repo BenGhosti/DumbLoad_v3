@@ -6,6 +6,8 @@
 
 const { safeCompare } = require('../utils/security');
 const { isValidSession, createSession, SESSION_DURATION } = require('../utils/session');
+const { config } = require('../config');
+const { hasPasskeysSync } = require('../services/passkeyStore');
 const logger = require('../utils/logger');
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
@@ -124,8 +126,79 @@ function requirePin(PIN) {
   };
 }
 
+/**
+ * Determine whether authentication is required based on the configured auth mode
+ * @returns {boolean} True if authentication is required
+ */
+function isAuthRequired() {
+  const pinConfigured = !!config.pin;
+  const passkeyConfigured = hasPasskeysSync();
+
+  switch (config.authMode) {
+    case 'passkey':
+      return passkeyConfigured;
+    case 'both':
+      return pinConfigured || passkeyConfigured;
+    case 'pin':
+    default:
+      return pinConfigured;
+  }
+}
+
+/**
+ * Unified authentication middleware for protected routes.
+ * Supports PIN, Passkey, and both modes via session tokens.
+ */
+function requireAuth() {
+  return (req, res, next) => {
+    // If no auth is configured, allow access
+    if (!isAuthRequired()) {
+      return next();
+    }
+
+    // Check session token first (from PIN or Passkey login)
+    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
+    if (isValidSession(sessionToken)) {
+      return next();
+    }
+
+    // Fallback: legacy PIN cookie
+    const cookiePin = req.cookies?.DUMBLOAD_PIN;
+    if (config.pin && cookiePin && safeCompare(cookiePin, config.pin)) {
+      const newToken = createSession(req.ip);
+      res.cookie(SESSION_COOKIE_NAME, newToken, {
+        httpOnly: true,
+        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+        sameSite: 'strict',
+        path: '/',
+        maxAge: SESSION_DURATION
+      });
+      return next();
+    }
+
+    // Fallback: PIN header (for API clients)
+    const headerPin = req.headers['x-pin'];
+    if (config.pin && headerPin && safeCompare(headerPin, config.pin)) {
+      const newToken = createSession(req.ip);
+      res.cookie(SESSION_COOKIE_NAME, newToken, {
+        httpOnly: true,
+        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+        sameSite: 'strict',
+        path: '/',
+        maxAge: SESSION_DURATION
+      });
+      return next();
+    }
+
+    logger.warn(`Unauthorized access attempt from IP: ${req.ip}`);
+    res.status(401).json({ error: 'Unauthorized' });
+  };
+}
+
 module.exports = {
   // securityHeaders, // Deprecated, use helmet instead
   getHelmetConfig,
-  requirePin
+  requirePin,
+  requireAuth,
+  isAuthRequired
 }; 
