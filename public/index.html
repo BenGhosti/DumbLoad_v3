@@ -37,6 +37,7 @@
                     <line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
                 <p>Drag and drop files or folders here<br>or</p>
+                <p class="clipboard-hint">Strg+V / Cmd+V to paste from clipboard</p>
                 <input type="file" id="fileInput" multiple hidden>
                 <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
                 <div class="button-group">
@@ -103,6 +104,10 @@
         const SHOW_FILE_LIST_STR = '{{SHOW_FILE_LIST}}';
         const SHOW_FILE_LIST = ['true', '1', 'yes'].includes(SHOW_FILE_LIST_STR.toLowerCase());
 
+        // Upload validation config (injected from server)
+        const MAX_FILE_SIZE_BYTES = parseInt('{{MAX_FILE_SIZE_MB}}', 10) * 1024 * 1024;
+        const ALLOWED_EXTENSIONS = '{{ALLOWED_EXTENSIONS}}' ? '{{ALLOWED_EXTENSIONS}}'.split(',').map(e => e.trim().toLowerCase()).filter(e => e) : null;
+
         // Utility function to generate a unique batch ID
         function generateBatchId() {
             return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -158,7 +163,17 @@
                 } catch (error) {
                     console.error('Upload failed:', error);
                     if (this.progressElement) {
-                        this.progressElement.infoSpan.textContent = `Error: ${error.message}`;
+                        let userMessage = error.message || 'Upload failed';
+                        if (error.message.includes('413') || error.message.includes('File too large')) {
+                            userMessage = 'Datei ist zu groß';
+                        } else if (error.message.includes('400') || error.message.includes('not allowed')) {
+                            userMessage = 'Dateityp nicht erlaubt';
+                        } else if (error.message.includes('403')) {
+                            userMessage = 'Zugriff verweigert';
+                        } else if (error.message.includes('500')) {
+                            userMessage = 'Serverfehler';
+                        }
+                        this.progressElement.infoSpan.textContent = `Fehler: ${userMessage}`;
                         this.progressElement.infoSpan.style.color = 'var(--danger-color)';
                     }
                     return false;
@@ -520,6 +535,7 @@
         fileInput.addEventListener('change', handleFiles, false);
         folderInput.addEventListener('change', handleFolders, false);
         uploadButton.addEventListener('click', startUploads);
+        dropZone.addEventListener('paste', handlePaste, false);
 
         function preventDefaults(e) {
             e.preventDefault();
@@ -564,6 +580,40 @@
             } else {
                 // Handle regular files (not folders)
                 files = [...e.dataTransfer.files];
+                updateFileList();
+                if (AUTO_UPLOAD) startUploads();
+            }
+        }
+
+        function handlePaste(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const clipboardItems = e.clipboardData.items;
+            if (!clipboardItems || clipboardItems.length === 0) return;
+
+            const pastedFiles = [];
+            for (const clipboardItem of clipboardItems) {
+                try {
+                    if (clipboardItem.kind === 'file') {
+                        const file = clipboardItem.getAsFile();
+                        if (file) {
+                            pastedFiles.push(file);
+                        }
+                    } else if (clipboardItem.kind === 'string' && clipboardItem.type.startsWith('text/')) {
+                        const text = e.clipboardData.getData('text/plain');
+                        if (text) {
+                            const file = new File([text], 'pasted-text.txt', { type: 'text/plain' });
+                            pastedFiles.push(file);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error processing pasted item:', err);
+                }
+            }
+
+            if (pastedFiles.length > 0) {
+                files = pastedFiles;
                 updateFileList();
                 if (AUTO_UPLOAD) startUploads();
             }
@@ -972,7 +1022,39 @@
         `;
         document.head.appendChild(style);
 
+        function validateFiles(fileList) {
+            const errors = [];
+            for (const file of fileList) {
+                const fileName = file.webkitRelativePath || file.name;
+                if (MAX_FILE_SIZE_BYTES && file.size > MAX_FILE_SIZE_BYTES) {
+                    errors.push(`Datei "${fileName}" ist zu groß (${formatFileSize(file.size)} > Limit ${formatFileSize(MAX_FILE_SIZE_BYTES)})`);
+                }
+                if (ALLOWED_EXTENSIONS && ALLOWED_EXTENSIONS.length > 0) {
+                    const ext = fileName.includes('.') ? '.' + fileName.split('.').pop().toLowerCase() : '';
+                    if (ext && !ALLOWED_EXTENSIONS.includes(ext)) {
+                        errors.push(`Dateityp "${ext}" nicht erlaubt. Erlaubt: ${ALLOWED_EXTENSIONS.join(', ')}`);
+                    }
+                }
+            }
+            return errors;
+        }
+
         async function startUploads() {
+            const validationErrors = validateFiles(files);
+            if (validationErrors.length > 0) {
+                const errorText = validationErrors.slice(0, 5).join('\n');
+                const remaining = validationErrors.length - 5;
+                const suffix = remaining > 0 ? `\n... und ${remaining} weitere Fehler` : '';
+                Toastify({
+                    text: `Validierungsfehler:\n${errorText}${suffix}`,
+                    duration: 8000,
+                    gravity: "bottom",
+                    position: "right",
+                    style: { background: "#f44336", whiteSpace: "pre-wrap", maxWidth: "400px" }
+                }).showToast();
+                return;
+            }
+
             try {
                 uploadButton.disabled = true;
                 document.getElementById('uploadProgress').innerHTML = '';
@@ -1012,9 +1094,21 @@
                 }
             } catch (error) {
                 console.error('Upload failed:', error);
+                let errorMessage = 'Upload fehlgeschlagen';
+                if (error.message.includes('413') || error.message.includes('File too large')) {
+                    errorMessage = 'Datei ist zu groß für den Server. Bitte Kontaktieren Sie den Administrator.';
+                } else if (error.message.includes('400') || error.message.includes('not allowed')) {
+                    errorMessage = 'Dateityp nicht erlaubt: ' + error.message;
+                } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    errorMessage = 'Nicht autorisiert. Bitte Seite neu laden und erneut anmelden.';
+                } else if (error.message.includes('403')) {
+                    errorMessage = 'Zugriff verweigert: ' + error.message;
+                } else if (error.message.includes('500')) {
+                    errorMessage = 'Serverfehler. Bitte versuchen Sie es später erneut.';
+                }
                 Toastify({
-                    text: `Upload failed: ${error.message}`,
-                    duration: 3000,
+                    text: errorMessage,
+                    duration: 5000,
                     gravity: "bottom",
                     position: "right",
                     style: {

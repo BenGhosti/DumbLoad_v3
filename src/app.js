@@ -105,6 +105,8 @@ app.get('/', (req, res) => {
   html = html.replace('{{AUTO_UPLOAD}}', config.autoUpload.toString());
   html = html.replace('{{MAX_RETRIES}}', config.clientMaxRetries.toString());
   html = html.replace('{{SHOW_FILE_LIST}}', config.showFileList.toString());
+  html = html.replace('{{MAX_FILE_SIZE_MB}}', Math.floor(config.maxFileSize / (1024 * 1024)).toString());
+  html = html.replace('{{ALLOWED_EXTENSIONS}}', config.allowedExtensions ? config.allowedExtensions.join(',') : '');
   html = injectDemoBanner(html);
   res.send(html);
 });
@@ -135,6 +137,9 @@ app.use((req, res, next) => {
     if (req.path === '/index.html' || req.path === 'index.html') {
       html = html.replace('{{AUTO_UPLOAD}}', config.autoUpload.toString());
       html = html.replace('{{MAX_RETRIES}}', config.clientMaxRetries.toString());
+      html = html.replace('{{SHOW_FILE_LIST}}', config.showFileList.toString());
+      html = html.replace('{{MAX_FILE_SIZE_MB}}', Math.floor(config.maxFileSize / (1024 * 1024)).toString());
+      html = html.replace('{{ALLOWED_EXTENSIONS}}', config.allowedExtensions ? config.allowedExtensions.join(',') : '');
     }
     // Ensure baseUrl has a trailing slash
     const baseUrlWithSlash = config.baseUrl.endsWith('/') ? config.baseUrl : config.baseUrl + '/';
