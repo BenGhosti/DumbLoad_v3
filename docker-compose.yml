@@ -1,0 +1,39 @@
+﻿services:
+    dumbload:
+        image: BenGhosti/dumbload:latest
+        # build: .
+        container_name: dumbload 
+        restart: unless-stopped 
+        ports:
+            - 3000:3000
+        volumes:
+            # Replace "./local_uploads" ( before the colon ) with the path where the files land
+            - ./local_uploads:/app/uploads 
+        environment:  # Environment variables for the DumbLoad service
+            # Explicitly set upload directory inside the container
+            UPLOAD_DIR: /app/uploads
+            DUMBLOAD_TITLE: DumbLoad  # The title shown in the web interface
+            MAX_FILE_SIZE: 1024  # Maximum file size in MB
+            DUMBLOAD_PIN: 123456  # Optional PIN protection (4-10 digits, leave empty to disable)
+            AUTO_UPLOAD: true  # Upload without clicking button
+            BASE_URL: http://localhost:3000  # The base URL for the application, You must update this to the url you use to access your site
+            
+            # Comma-separated list of allowed origins for CORS
+            # (default: '*' if empty, replace with your base_url if you want to restrict only to base_url)
+            # When adding multiple origins, base_url will be included by default and does not need to the list
+            # ALLOWED_IFRAME_ORIGINS: #DEPRECATED and will be used as ALLOWED_ORIGINS if SET
+            # ALLOWED_ORIGINS: http://internalip:port,https://subdomain.example.com
+
+            # Additional available environment variables (commented out with defaults)
+            # PORT: 3000  # Server port (default: 3000)
+            # NODE_ENV: production  # Node environment (development/production) - when not using production ALLOWED_ORIGINS will be set to '*' by default
+            # DEBUG: false  # Debug mode for verbose logging (default: false in production, true in development)
+            # APPRISE_URL: ""  # Apprise notification URL for upload notifications (default: none)
+            # APPRISE_MESSAGE: "New file uploaded - {filename} ({size}), Storage used {storage}"  # Notification message template with placeholders: {filename}, {size}, {storage}
+            # APPRISE_SIZE_UNIT: "Auto"  # Size unit for notifications (B, KB, MB, GB, TB, or Auto)
+            # ALLOWED_EXTENSIONS: ".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt"  # Comma-separated list of allowed file extensions (default: all allowed)
+            
+            # Reverse Proxy / Security Settings (IMPORTANT: Read documentation before enabling)
+            # TRUST_PROXY: false  # Set to 'true' ONLY if behind a trusted reverse proxy (Nginx, Caddy, Traefik, etc.)
+            # TRUSTED_PROXY_IPS: 172.17.0.1,10.0.0.1  # Optional: Comma-separated list of trusted proxy IPs for additional security
+            # WARNING: Enabling TRUST_PROXY without a proper reverse proxy allows attackers to bypass rate limiting!

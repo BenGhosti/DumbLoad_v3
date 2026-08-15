@@ -1,0 +1,39 @@
+﻿{
+  "name": "dumbload",
+  "version": "1.0.2",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "node --test test/**/*.test.js",
+    "predev": "node -e \"const v=process.versions.node.split('.');if(v[0]<20) {console.error('Node.js >=20.0.0 required');process.exit(1)}\""
+  },
+  "keywords": [],
+  "author": "BenGhosti",
+  "license": "ISC",
+  "description": "A simple file upload application",
+  "dependencies": {
+    "apprise": "^1.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "toastify-js": "^1.12.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-n": "^17.0.0",
+    "nodemon": "^3.1.9",
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
