@@ -47,20 +47,19 @@ async function calculateDirectorySize(directoryPath) {
   let totalSize = 0;
   try {
     const files = await fs.promises.readdir(directoryPath);
-    const fileSizePromises = files.map(async file => {
+    for (const file of files) {
       const filePath = path.join(directoryPath, file);
-      const stats = await fs.promises.stat(filePath);
-      if (stats.isFile()) {
-        return stats.size;
-      } else if (stats.isDirectory()) {
-        // Recursively calculate size for subdirectories
-        return await calculateDirectorySize(filePath);
+      try {
+        const stats = await fs.promises.stat(filePath);
+        if (stats.isFile()) {
+          totalSize += stats.size;
+        } else if (stats.isDirectory()) {
+          totalSize += await calculateDirectorySize(filePath);
+        }
+      } catch (statErr) {
+        // Skip files/directories that can't be stat'd (permissions, broken symlinks, etc.)
       }
-      return 0;
-    });
-    
-    const sizes = await Promise.all(fileSizePromises);
-    totalSize = sizes.reduce((acc, size) => acc + size, 0);
+    }
   } catch (err) {
     logger.error(`Failed to calculate directory size: ${err.message}`);
   }

@@ -444,176 +444,63 @@
 
         // For drag and drop folders
         async function getAllFileEntries(dataTransferItems) {
-            console.debug('Starting getAllFileEntries with items:', Array.from(dataTransferItems).map(item => ({
-                kind: item.kind,
-                type: item.type
-            })));
-            
-            let fileEntries = [];
-            let rootFolderName = null;
-            
-            async function traverseEntry(entry, path = '') {
-                console.debug('Traversing entry:', {
-                    name: entry.name,
-                    isFile: entry.isFile,
-                    isDirectory: entry.isDirectory,
-                    currentPath: path
+            const fileEntries = [];
+
+            async function traverseFileEntry(entry, path = '') {
+                const file = await new Promise((resolve) => {
+                    entry.file(result => {
+                        const fullPath = path ? `${path}/${entry.name}` : entry.name;
+                        const fileWithPath = new File([result], entry.name, {
+                            type: result.type,
+                            lastModified: result.lastModified
+                        });
+                        Object.defineProperty(fileWithPath, 'webkitRelativePath', {
+                            value: fullPath,
+                            writable: false,
+                            configurable: true
+                        });
+                        resolve(fileWithPath);
+                    });
                 });
+                fileEntries.push(file);
+            }
 
-                if (entry.isFile) {
-                    const file = await new Promise((resolve, reject) => {
-                        entry.file(file => {
-                            console.debug('Processing file in traverseEntry:', {
-                                name: file.name,
-                                size: file.size,
-                                type: file.type,
-                                currentPath: path,
-                                rootFolderName: rootFolderName
-                            });
+            async function traverseDirectoryEntry(entry, path = '') {
+                const dirReader = entry.createReader();
+                const dirPath = path ? `${path}/${entry.name}` : entry.name;
 
-                            // If this is the first file and we don't have a root folder name yet,
-                            // use its parent folder name
-                            if (!rootFolderName && path) {
-                                rootFolderName = path.split('/')[0];
-                                console.debug('Set root folder name from file path:', rootFolderName);
-                            }
-                            
-                            const fullPath = path ? `${path}/${entry.name}` : entry.name;
-                            console.debug('Constructed full path:', {
-                                path: path,
-                                entryName: entry.name,
-                                fullPath: fullPath
-                            });
-                            
-                            const fileWithPath = new File([file], entry.name, {
-                                type: file.type,
-                                lastModified: file.lastModified
-                            });
-
-                            if (rootFolderName) {
-                                const relativePath = fullPath.startsWith(rootFolderName) ? 
-                                    fullPath : 
-                                    `${rootFolderName}/${fullPath}`;
-                                // Use Object.defineProperty to ensure webkitRelativePath is properly set
-                                Object.defineProperty(fileWithPath, 'webkitRelativePath', {
-                                    value: relativePath,
-                                    writable: false,
-                                    configurable: true
-                                });
-                                console.debug('Set webkitRelativePath with root folder:', {
-                                    fullPath: fullPath,
-                                    rootFolderName: rootFolderName,
-                                    relativePath: relativePath,
-                                    hasWebkitRelativePath: 'webkitRelativePath' in fileWithPath,
-                                    webkitRelativePath: fileWithPath.webkitRelativePath
-                                });
-                            } else {
-                                Object.defineProperty(fileWithPath, 'webkitRelativePath', {
-                                    value: fullPath,
-                                    writable: false,
-                                    configurable: true
-                                });
-                                console.debug('Set webkitRelativePath without root folder:', {
-                                    fullPath: fullPath,
-                                    hasWebkitRelativePath: 'webkitRelativePath' in fileWithPath,
-                                    webkitRelativePath: fileWithPath.webkitRelativePath
-                                });
-                            }
-                            
-                            resolve(fileWithPath);
-                        }, reject);
+                while (true) {
+                    const entries = await new Promise((resolve, reject) => {
+                        dirReader.readEntries(resolve, reject);
                     });
-                    fileEntries.push(file);
-                } else if (entry.isDirectory) {
-                    console.debug('Processing directory:', {
-                        name: entry.name,
-                        currentPath: path,
-                        isRootLevel: !path,
-                        currentRootFolderName: rootFolderName
-                    });
-
-                    if (!path && !rootFolderName) {
-                        rootFolderName = entry.name;
-                        console.debug('Set root folder name from directory:', rootFolderName);
-                    }
-                    
-                    const dirReader = entry.createReader();
-                    let entries = [];
-                    
-                    let readEntries = await new Promise((resolve, reject) => {
-                        const readNextBatch = () => {
-                            dirReader.readEntries(batch => {
-                                console.debug('Read directory batch:', {
-                                    directoryName: entry.name,
-                                    batchSize: batch.length,
-                                    entries: batch.map(e => ({
-                                        name: e.name,
-                                        isFile: e.isFile,
-                                        isDirectory: e.isDirectory
-                                    }))
-                                });
-
-                                if (batch.length > 0) {
-                                    entries = entries.concat(batch);
-                                    readNextBatch();
-                                } else {
-                                    resolve(entries);
-                                }
-                            }, reject);
-                        };
-                        readNextBatch();
-                    });
-                    
-                    const dirPath = path ? `${path}/${entry.name}` : entry.name;
-                    console.debug('Processing directory contents:', {
-                        directoryName: entry.name,
-                        currentPath: path,
-                        newDirPath: dirPath,
-                        totalEntries: entries.length
-                    });
-                    
+                    if (entries.length === 0) break;
                     for (const childEntry of entries) {
-                        await traverseEntry(childEntry, dirPath);
+                        if (childEntry.isFile) {
+                            await traverseFileEntry(childEntry, dirPath);
+                        } else if (childEntry.isDirectory) {
+                            await traverseDirectoryEntry(childEntry, dirPath);
+                        }
                     }
                 }
             }
 
-            try {
-                for (const item of dataTransferItems) {
+            for (const item of dataTransferItems) {
+                try {
                     const entry = item.webkitGetAsEntry();
                     if (entry) {
-                        console.debug('Processing root level item:', {
-                            name: entry.name,
-                            isFile: entry.isFile,
-                            isDirectory: entry.isDirectory
-                        });
-                        await traverseEntry(entry);
+                        if (entry.isFile) {
+                            await traverseFileEntry(entry);
+                        } else if (entry.isDirectory) {
+                            await traverseDirectoryEntry(entry);
+                        }
                     }
+                } catch (error) {
+                    console.error('Error processing drop item:', error);
                 }
-
-                console.debug('Final file entries before sorting:', fileEntries.map(f => ({
-                    name: f.name,
-                    path: f.webkitRelativePath,
-                    size: f.size,
-                    hasWebkitRelativePath: 'webkitRelativePath' in f,
-                    webkitRelativePath: f.webkitRelativePath
-                })));
-
-                fileEntries.sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
-
-                console.debug('Final sorted file entries:', fileEntries.map(f => ({
-                    name: f.name,
-                    path: f.webkitRelativePath,
-                    size: f.size,
-                    hasWebkitRelativePath: 'webkitRelativePath' in f,
-                    webkitRelativePath: f.webkitRelativePath
-                })));
-
-                return fileEntries;
-            } catch (error) {
-                console.error('Error in getAllFileEntries:', error);
-                throw error;
             }
+
+            fileEntries.sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
+            return fileEntries;
         }
 
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -649,7 +536,7 @@
 
         function handleDrop(e) {
             const items = e.dataTransfer.items;
-            if (items && items[0].webkitGetAsEntry) {
+            if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
                 // Show loading state
                 const loadingItem = document.createElement('div');
                 loadingItem.className = 'file-item loading';
@@ -723,13 +610,6 @@
         }
 
         function updateFileList() {
-            console.debug('Starting updateFileList with files:', files.map(f => ({
-                name: f.name,
-                path: f.webkitRelativePath,
-                size: f.size,
-                hasWebkitRelativePath: 'webkitRelativePath' in f,
-                webkitRelativePath: f.webkitRelativePath
-            })));
 
             fileList.innerHTML = '';
             
@@ -739,43 +619,17 @@
             // First, determine if we have a root folder structure
             const hasRootFolder = files.some(file => {
                 const hasPath = 'webkitRelativePath' in file && file.webkitRelativePath;
-                console.debug('Checking file for root folder:', {
-                    name: file.name,
-                    hasWebkitRelativePath: 'webkitRelativePath' in file,
-                    webkitRelativePath: file.webkitRelativePath,
-                    hasPath: hasPath
-                });
                 return hasPath && file.webkitRelativePath.includes('/');
-            });
-            console.debug('Folder structure detection:', {
-                hasRootFolder,
-                totalFiles: files.length
             });
             
             files.forEach(file => {
                 const path = file.webkitRelativePath || file.name;
-                console.debug('Processing file in updateFileList:', {
-                    name: file.name,
-                    path: path,
-                    size: file.size,
-                    hasWebkitRelativePath: 'webkitRelativePath' in file
-                });
                 
                 if (hasRootFolder) {
                     const parts = path.split('/');
-                    console.debug('Path parts:', {
-                        path: path,
-                        parts: parts,
-                        length: parts.length
-                    });
 
                     if (parts.length > 1) {
                         const folderName = parts[0];
-                        console.debug('Processing folder:', {
-                            folderName: folderName,
-                            pathParts: parts,
-                            fileName: file.name
-                        });
 
                         if (!folders.has(folderName)) {
                             folders.set(folderName, {
@@ -784,7 +638,6 @@
                                 size: 0,
                                 subfolders: new Map()
                             });
-                            console.debug('Created new folder:', folderName);
                         }
                         
                         const folder = folders.get(folderName);
@@ -792,11 +645,6 @@
                         folder.size += file.size;
                         
                         if (parts.length > 2) {
-                            console.debug('Processing subfolder structure:', {
-                                folderName: folderName,
-                                subfolderPath: parts.slice(1, -1),
-                                fileName: parts[parts.length - 1]
-                            });
 
                             let currentFolder = folder;
                             const subfolderPath = parts.slice(1, -1);
@@ -809,10 +657,6 @@
                                         size: 0,
                                         subfolders: new Map()
                                     });
-                                    console.debug('Created new subfolder:', {
-                                        parentFolder: currentFolder.name,
-                                        subfolder: subfolder
-                                    });
                                 }
                                 currentFolder = currentFolder.subfolders.get(subfolder);
                                 currentFolder.files.push(file);
@@ -820,24 +664,13 @@
                             }
                         }
                     } else {
-                        console.debug('Adding root file:', file.name);
                         rootFiles.push(file);
                     }
                 } else {
-                    console.debug('Adding file as root file:', file.name);
                     rootFiles.push(file);
                 }
             });
             
-            console.debug('Final structure:', {
-                rootFiles: rootFiles.map(f => f.name),
-                folders: Array.from(folders.entries()).map(([name, folder]) => ({
-                    name,
-                    fileCount: folder.files.length,
-                    size: folder.size,
-                    subfolders: Array.from(folder.subfolders.keys())
-                }))
-            });
             
             // Function to render a folder's contents
             function renderFolder(folder, level = 0) {

@@ -18,7 +18,6 @@ const logger = require('../utils/logger');
 async function sendNotification(filename, fileSize, config) {
     const { appriseUrl, appriseMessage, appriseSizeUnit, uploadDir } = config;
 
-    console.debug("NOTIFICATIONS CONFIG:", filename, fileSize, config);
     if (!appriseUrl) {
         return;
     }
