@@ -27,6 +27,11 @@ const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
  * Generate authentication options for passkey login (public)
  */
 router.post('/auth-options', async (req, res) => {
+  // Reject passkey login when only PIN authentication is enabled
+  if (config.authMode === 'pin') {
+    return res.status(403).json({ error: 'Passkey login is disabled. Use PIN authentication instead.' });
+  }
+
   try {
     const { challengeId, options } = await generatePasskeyAuthOptions();
     res.json({ challengeId, options });
@@ -40,6 +45,11 @@ router.post('/auth-options', async (req, res) => {
  * Verify passkey authentication and create session (public)
  */
 router.post('/auth-verify', async (req, res) => {
+  // Reject passkey login when only PIN authentication is enabled
+  if (config.authMode === 'pin') {
+    return res.status(403).json({ success: false, error: 'Passkey login is disabled. Use PIN authentication instead.' });
+  }
+
   const { challengeId, response } = req.body;
   const ip = getClientIp(req);
 
@@ -99,8 +109,11 @@ router.post('/register-verify', requireAuth(), async (req, res) => {
     return res.status(400).json({ error: 'Missing challengeId or response' });
   }
 
+  // Re-validate the passkey name (trimmed, bounded length)
+  const safeName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 50) : 'Unbenannter Schlüssel';
+
   try {
-    const result = await verifyPasskeyRegistration(challengeId, response, name);
+    const result = await verifyPasskeyRegistration(challengeId, response, safeName);
     if (!result.verified) {
       return res.status(400).json({ error: result.error || 'Registration failed' });
     }

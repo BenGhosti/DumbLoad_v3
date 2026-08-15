@@ -42,6 +42,14 @@ router.post('/verify-pin', (req, res) => {
   const ip = getClientIp(req);
   
   try {
+    // Reject PIN login when only passkey authentication is enabled
+    if (config.authMode === 'passkey') {
+      return res.status(403).json({
+        success: false,
+        error: 'PIN login is disabled. Use passkey authentication instead.'
+      });
+    }
+
     // If no PIN is set in config, always return success
     if (!config.pin) {
       res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });

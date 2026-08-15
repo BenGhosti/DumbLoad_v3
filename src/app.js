@@ -15,7 +15,7 @@ const fsPromises = require('fs').promises;
 const { config, validateConfig } = require('./config');
 const logger = require('./utils/logger');
 const { ensureDirectoryExists } = require('./utils/fileUtils');
-const { getHelmetConfig, requirePin, requireAuth, isAuthRequired } = require('./middleware/security');
+const { getHelmetConfig, requireAuth, isAuthRequired } = require('./middleware/security');
 const { safeCompare } = require('./utils/security');
 const { isValidSession } = require('./utils/session');
 const { initUploadLimiter, pinVerifyLimiter, pinStatusLimiter, downloadLimiter } = require('./middleware/rateLimiter');
@@ -103,14 +103,15 @@ app.use('/api/passkey/auth-options', pinStatusLimiter);
 app.use('/api/passkey/auth-verify', pinVerifyLimiter);
 app.use('/api/passkey', passkeyRoutes);
 
-app.use('/api/upload', requirePin(config.pin), initUploadLimiter, uploadRouter);
-app.use('/api/files', requirePin(config.pin), downloadLimiter, fileRoutes);
+app.use('/api/upload', requireAuth(), initUploadLimiter, uploadRouter);
+app.use('/api/files', requireAuth(), downloadLimiter, fileRoutes);
 
 // Root route
 app.get('/', (req, res) => {
   // Check if authentication is required and a valid session exists
   const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
-  const hasValidPinCookie = req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
+  const hasValidPinCookie = config.authMode !== 'passkey' &&
+    req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
   if (isAuthRequired() && !hasValidSession && !hasValidPinCookie) {
     return res.redirect('/login.html');
   }

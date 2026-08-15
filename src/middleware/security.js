@@ -75,58 +75,6 @@ function getHelmetConfig() {
 }
 
 /**
- * PIN protection middleware
- * @param {string} PIN - Valid PIN for comparison
- */
-function requirePin(PIN) {
-  return (req, res, next) => {
-    // Skip PIN check if no PIN is configured
-    if (!PIN) {
-      return next();
-    }
-
-    // Check session token first (primary mechanism, 8h expiry)
-    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
-    if (isValidSession(sessionToken)) {
-      return next();
-    }
-
-    // Check legacy PIN cookie (backward compatibility)
-    const cookiePin = req.cookies?.DUMBLOAD_PIN;
-    if (cookiePin && safeCompare(cookiePin, PIN)) {
-      // Migrate to session token for continued access
-      const newToken = createSession(req.ip);
-      res.cookie(SESSION_COOKIE_NAME, newToken, {
-        httpOnly: true,
-        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-        sameSite: 'strict',
-        path: '/',
-        maxAge: SESSION_DURATION
-      });
-      return next();
-    }
-
-    // Check header as fallback
-    const headerPin = req.headers['x-pin'];
-    if (headerPin && safeCompare(headerPin, PIN)) {
-      // Set session cookie for subsequent requests
-      const newToken = createSession(req.ip);
-      res.cookie(SESSION_COOKIE_NAME, newToken, {
-        httpOnly: true,
-        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-        sameSite: 'strict',
-        path: '/',
-        maxAge: SESSION_DURATION
-      });
-      return next();
-    }
-
-    logger.warn(`Unauthorized access attempt from IP: ${req.ip}`);
-    res.status(401).json({ error: 'Unauthorized' });
-  };
-}
-
-/**
  * Determine whether authentication is required based on the configured auth mode
  * @returns {boolean} True if authentication is required
  */
@@ -162,32 +110,36 @@ function requireAuth() {
       return next();
     }
 
-    // Fallback: legacy PIN cookie
-    const cookiePin = req.cookies?.DUMBLOAD_PIN;
-    if (config.pin && cookiePin && safeCompare(cookiePin, config.pin)) {
-      const newToken = createSession(req.ip);
-      res.cookie(SESSION_COOKIE_NAME, newToken, {
-        httpOnly: true,
-        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-        sameSite: 'strict',
-        path: '/',
-        maxAge: SESSION_DURATION
-      });
-      return next();
-    }
+    // PIN fallback (cookie/header) only applies in PIN or both mode.
+    // In passkey-only mode, a stale PIN cookie or header must NOT grant access.
+    if (config.authMode !== 'passkey') {
+      // Fallback: legacy PIN cookie
+      const cookiePin = req.cookies?.DUMBLOAD_PIN;
+      if (config.pin && cookiePin && safeCompare(cookiePin, config.pin)) {
+        const newToken = createSession(req.ip);
+        res.cookie(SESSION_COOKIE_NAME, newToken, {
+          httpOnly: true,
+          secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+          sameSite: 'strict',
+          path: '/',
+          maxAge: SESSION_DURATION
+        });
+        return next();
+      }
 
-    // Fallback: PIN header (for API clients)
-    const headerPin = req.headers['x-pin'];
-    if (config.pin && headerPin && safeCompare(headerPin, config.pin)) {
-      const newToken = createSession(req.ip);
-      res.cookie(SESSION_COOKIE_NAME, newToken, {
-        httpOnly: true,
-        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-        sameSite: 'strict',
-        path: '/',
-        maxAge: SESSION_DURATION
-      });
-      return next();
+      // Fallback: PIN header (for API clients)
+      const headerPin = req.headers['x-pin'];
+      if (config.pin && headerPin && safeCompare(headerPin, config.pin)) {
+        const newToken = createSession(req.ip);
+        res.cookie(SESSION_COOKIE_NAME, newToken, {
+          httpOnly: true,
+          secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+          sameSite: 'strict',
+          path: '/',
+          maxAge: SESSION_DURATION
+        });
+        return next();
+      }
     }
 
     logger.warn(`Unauthorized access attempt from IP: ${req.ip}`);
@@ -198,7 +150,6 @@ function requireAuth() {
 module.exports = {
   // securityHeaders, // Deprecated, use helmet instead
   getHelmetConfig,
-  requirePin,
   requireAuth,
   isAuthRequired
 }; 

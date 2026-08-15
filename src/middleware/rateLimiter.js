@@ -65,9 +65,10 @@ const pinVerifyLimiter = createLimiter({
   legacyHeaders: false,
   // Use secure IP extraction to prevent header spoofing
   keyGenerator: (req) => getClientIp(req),
-  // Apply strict rate limiting only to PIN verification, not PIN status checks
+  // Apply strict rate limiting only to PIN verification, not status/health checks
+  // (these are handled by the more permissive pinStatusLimiter)
   skip: (req) => {
-    return req.path === '/pin-required'; // Skip rate limiting for PIN requirement checks
+    return ['/pin-required', '/status', '/logout'].some(p => req.path.endsWith(p));
   }
 });
 

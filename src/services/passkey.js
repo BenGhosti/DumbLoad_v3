@@ -144,8 +144,17 @@ async function verifyPasskeyRegistration(challengeId, response, passkeyName) {
  * @returns {Promise<Object>} { challengeId, options }
  */
 async function generatePasskeyAuthOptions() {
+  // Include registered credentials so non-discoverable hardware keys (e.g. basic YubiKey U2F)
+  // can also be used, in addition to discoverable passkeys.
+  const existingKeys = await passkeyStore.getAllPasskeys();
+  const allowCredentials = existingKeys.map(key => ({
+    id: key.id,
+    transports: key.transports || []
+  }));
+
   const options = await generateAuthenticationOptions({
     rpID: config.rpId,
+    allowCredentials,
     userVerification: 'preferred'
   });
 
@@ -163,6 +172,10 @@ async function verifyPasskeyAuthentication(challengeId, response) {
   const expectedChallenge = consumeChallenge(challengeId, 'authentication');
   if (!expectedChallenge) {
     return { verified: false, error: 'Authentication challenge expired or invalid. Please try again.' };
+  }
+
+  if (!response || typeof response !== 'object' || typeof response.id !== 'string' || !response.id) {
+    return { verified: false, error: 'Invalid authentication response' };
   }
 
   const credentialId = response.id;
