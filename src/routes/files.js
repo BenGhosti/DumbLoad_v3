@@ -119,6 +119,12 @@ router.get('/download/*', async (req, res) => {
  * List all files and folders recursively
  */
 router.get('/', async (req, res) => {
+  // Only allow file listing if explicitly enabled (protects against strangers browsing files)
+  if (!config.showFileList) {
+    logger.warn(`File listing attempt blocked (SHOW_FILE_LIST is disabled): ${req.ip}`);
+    return res.status(403).json({ error: 'File listing is disabled' });
+  }
+
   try {
     const items = await getDirectoryContents(config.uploadDir);
     

@@ -5,10 +5,13 @@
  */
 
 const { safeCompare } = require('../utils/security');
+const { isValidSession, createSession, SESSION_DURATION } = require('../utils/session');
 const logger = require('../utils/logger');
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+
+const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
 
 // const { config } = require('../config');
 /**
@@ -80,25 +83,39 @@ function requirePin(PIN) {
       return next();
     }
 
-    // Check cookie first
+    // Check session token first (primary mechanism, 8h expiry)
+    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
+    if (isValidSession(sessionToken)) {
+      return next();
+    }
+
+    // Check legacy PIN cookie (backward compatibility)
     const cookiePin = req.cookies?.DUMBLOAD_PIN;
     if (cookiePin && safeCompare(cookiePin, PIN)) {
+      // Migrate to session token for continued access
+      const newToken = createSession(req.ip);
+      res.cookie(SESSION_COOKIE_NAME, newToken, {
+        httpOnly: true,
+        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+        sameSite: 'strict',
+        path: '/',
+        maxAge: SESSION_DURATION
+      });
       return next();
     }
 
     // Check header as fallback
     const headerPin = req.headers['x-pin'];
     if (headerPin && safeCompare(headerPin, PIN)) {
-      // Set cookie for subsequent requests with enhanced security
-      const cookieOptions = {
-        httpOnly: true, // Always enable HttpOnly
+      // Set session cookie for subsequent requests
+      const newToken = createSession(req.ip);
+      res.cookie(SESSION_COOKIE_NAME, newToken, {
+        httpOnly: true,
         secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
         sameSite: 'strict',
         path: '/',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hour expiry
-      };
-      
-      res.cookie('DUMBLOAD_PIN', headerPin, cookieOptions);
+        maxAge: SESSION_DURATION
+      });
       return next();
     }
 

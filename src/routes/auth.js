@@ -11,10 +11,28 @@ const {
   MAX_ATTEMPTS,
   LOCKOUT_DURATION 
 } = require('../utils/security');
+const { createSession, destroySession, SESSION_DURATION } = require('../utils/session');
 const { getClientIp } = require('../utils/ipExtractor');
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+
+const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
+
+/**
+ * Build secure cookie options for the session cookie
+ * @param {object} req - Express request object
+ * @returns {object} Cookie options
+ */
+function getSessionCookieOptions(req) {
+  return {
+    httpOnly: true,
+    secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
+    sameSite: 'strict',
+    path: '/',
+    maxAge: SESSION_DURATION
+  };
+}
 /**
  * Verify PIN
  */
@@ -25,12 +43,7 @@ router.post('/verify-pin', (req, res) => {
   try {
     // If no PIN is set in config, always return success
     if (!config.pin) {
-      // res.cookie('DUMBLOAD_PIN', '', {
-      //   httpOnly: true,
-      //   secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-      //   sameSite: 'strict',
-      //   path: '/'
-      // });
+      res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
       res.clearCookie('DUMBLOAD_PIN', { path: '/' });
       return res.json({ success: true, error: null, path: '/' });
     }
@@ -64,13 +77,9 @@ router.post('/verify-pin', (req, res) => {
       // Reset attempts on successful login
       resetAttempts(ip);
       
-      // Set secure cookie with cleaned PIN
-      res.cookie('DUMBLOAD_PIN', cleanedPin, {
-        httpOnly: true,
-        secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-        sameSite: 'strict',
-        path: '/'
-      });
+      // Create a session token (8h expiry) instead of storing PIN directly
+      const sessionToken = createSession(ip);
+      res.cookie(SESSION_COOKIE_NAME, sessionToken, getSessionCookieOptions(req));
 
       logger.info(`Successful PIN verification from IP: ${ip}`);
       res.json({ success: true, error: null });
@@ -113,6 +122,9 @@ router.get('/pin-required', (req, res) => {
  */
 router.post('/logout', (req, res) => {
   try {
+    // Destroy the session token
+    destroySession(req.cookies?.DUMBLOAD_SESSION);
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
     res.clearCookie('DUMBLOAD_PIN', { path: '/' });
     logger.info(`Logout successful for IP: ${getClientIp(req)}`);
     res.json({ success: true });

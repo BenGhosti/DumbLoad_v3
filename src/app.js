@@ -17,6 +17,7 @@ const logger = require('./utils/logger');
 const { ensureDirectoryExists } = require('./utils/fileUtils');
 const { getHelmetConfig, requirePin } = require('./middleware/security');
 const { safeCompare } = require('./utils/security');
+const { isValidSession } = require('./utils/session');
 const { initUploadLimiter, pinVerifyLimiter, pinStatusLimiter, downloadLimiter } = require('./middleware/rateLimiter');
 const { injectDemoBanner, demoMiddleware } = require('./utils/demoMode');
 const { originValidationMiddleware, getCorsOptions } = require('./middleware/cors');
@@ -95,8 +96,10 @@ app.use('/api/files', requirePin(config.pin), downloadLimiter, fileRoutes);
 
 // Root route
 app.get('/', (req, res) => {
-  // Check if the PIN is configured and the cookie exists
-  if (config.pin && (!req.cookies?.DUMBLOAD_PIN || !safeCompare(req.cookies.DUMBLOAD_PIN, config.pin))) {
+  // Check if the PIN is configured and a valid session exists
+  const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+  const hasValidPinCookie = req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
+  if (config.pin && !hasValidSession && !hasValidPinCookie) {
     return res.redirect('/login.html');
   }
   

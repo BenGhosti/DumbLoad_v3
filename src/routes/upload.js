@@ -15,6 +15,7 @@ const logger = require('../utils/logger');
 const { getUniqueFolderPath, sanitizePathPreserveDirsSafe, isValidBatchId, isPathWithinUploadDir } = require('../utils/fileUtils');
 const { sendNotification } = require('../services/notifications');
 const { isDemoMode } = require('../utils/demoMode');
+const { chunkUploadLimiter } = require('../middleware/rateLimiter');
 
 // --- Persistence Setup ---
 const METADATA_DIR = path.join(config.uploadDir, '.metadata');
@@ -302,7 +303,7 @@ router.post('/init', async (req, res) => {
 });
 
 // Upload chunk
-router.post('/chunk/:uploadId', express.raw({ 
+router.post('/chunk/:uploadId', chunkUploadLimiter, express.raw({ 
   limit: config.maxFileSize + (10 * 1024 * 1024), // Generous limit for raw body
   type: 'application/octet-stream' 
 }), async (req, res) => {
