@@ -24,11 +24,12 @@ No auth (unless you want it now!), no storage, no nothing. Just a simple file up
 ### Option 1: Docker (For Dummies)
 
 ```bash
-# Pull and run with one command
-docker run -p 3000:3000 -v ./uploads:/app/uploads BenGhosti/dumbload:latest
+# Build and run with two commands
+docker build -t dumbload .
+docker run -p 3800:3000 -v ./uploads:/app/uploads dumbload
 ```
 
-1. Go to http://localhost:3000
+1. Go to http://localhost:3800
 2. Upload a File - It'll show up in ./uploads
 3. Celebrate on how dumb easy this was
 
@@ -39,26 +40,25 @@ Create a `docker-compose.yml` file:
 ```yaml
 services:
   dumbload:
-    image: BenGhosti/dumbload:latest
+    # Build locally (image is not published to a registry)
+    build: .
     ports:
-      - 3000:3000
+      - "3800:3000"
     volumes:
       # Where your uploaded files will land
       - ./uploads:/app/uploads
+    env_file:
+      - .env
     environment:
-      # Explicitly set upload directory inside the container
+      # Container-internal upload path (must match the volume mount)
       UPLOAD_DIR: /app/uploads
-      # The title shown in the web interface
-      DUMBLOAD_TITLE: DumbLoad
-      # Maximum file size in MB
-      MAX_FILE_SIZE: 1024
-      # Optional PIN protection (leave empty to disable)
-      DUMBLOAD_PIN: 123456
-      # Upload without clicking button
-      AUTO_UPLOAD: false
-      # The base URL for the application
-      # You must update this to the url you use to access your site
-      BASE_URL: http://localhost:3000
+```
+
+Create a `.env` file (copy from `.env.example`) and configure your settings:
+
+```bash
+cp .env.example .env
+# edit .env to set BASE_URL, DUMBLOAD_PIN, DUMBLOAD_AUTH_MODE, etc.
 ```
 
 Then run:
@@ -67,11 +67,11 @@ Then run:
 docker compose up -d
 ```
 
-1. Go to http://localhost:3000
+1. Go to http://localhost:3800
 2. Upload a File - It'll show up in ./uploads
 3. Rejoice in the glory of your dumb uploads
 
-> **Note:** The `UPLOAD_DIR` environment variable is now explicitly set to `/app/uploads` in the container. The Dockerfile only creates the `uploads` directory, not `local_uploads`. The host directory `./uploads` is mounted to `/app/uploads` for persistent storage.
+> **Note:** The `UPLOAD_DIR` environment variable is explicitly set to `/app/uploads` in the container (it is a container-specific path, not a user setting). All other settings live in the `.env` file. The host directory `./uploads` is mounted to `/app/uploads` for persistent storage.
 
 ### Option 3: Running Locally (For Developers)
 

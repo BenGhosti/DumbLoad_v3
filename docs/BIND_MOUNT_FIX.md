@@ -136,9 +136,9 @@ npm test -- test/path-validation.test.js
 ```yaml
 services:
   dumbload:
-    image: BenGhosti/dumbload:latest
+    build: .
     ports:
-      - 3000:3000
+      - "3800:3000"
     volumes:
       - ./uploads:/app/uploads  # Bind mount - now works!
     environment:
@@ -150,9 +150,9 @@ services:
 ```yaml
 services:
   dumbload:
-    image: BenGhosti/dumbload:latest
+    build: .
     ports:
-      - 3000:3000
+      - "3800:3000"
     volumes:
       - dumbload_uploads:/app/uploads  # Named volume
 
