@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "DUMBLOAD_PWA_CACHE_V1";
+﻿const CACHE_NAME = "DUMBLOAD_PWA_CACHE_V2";
 const ASSETS_TO_CACHE = [];
 
 const preload = async () => {
@@ -20,7 +20,13 @@ globalThis.addEventListener("install", (event) => {
 });
 
 globalThis.addEventListener("activate", (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      ))
+      .then(() => clients.claim())
+  );
 });
 
 globalThis.addEventListener("fetch", (event) => {

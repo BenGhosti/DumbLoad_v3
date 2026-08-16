@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{{SITE_TITLE}} - Simple File Upload</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="toastify/toastify.css">
@@ -37,7 +37,7 @@
                     <line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
                 <p>Drag and drop files or folders here<br>or</p>
-                <p class="clipboard-hint">Strg+V / Cmd+V to paste from clipboard</p>
+                <p class="clipboard-hint" id="clipboardHint">Strg+V / Cmd+V to paste from clipboard</p>
                 <input type="file" id="fileInput" multiple hidden>
                 <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
                 <div class="button-group">
@@ -640,6 +640,136 @@
         clearFilesBtn.addEventListener('click', clearFiles);
         dropZone.addEventListener('paste', handlePaste, false);
 
+        const clipboardHint = document.getElementById('clipboardHint');
+        const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
+        if (isTouchDevice) {
+            if (clipboardHint) clipboardHint.textContent = 'Tap here to paste from clipboard';
+            dropZone.addEventListener('click', handleDropZoneTap, false);
+        }
+
+        function handleDropZoneTap(e) {
+            if (e.target.closest('button')) return;
+            pasteFromClipboard();
+        }
+
+        async function pasteFromClipboard() {
+            if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+                Toastify({
+                    text: 'Clipboard access is not supported on this device',
+                    duration: 3000,
+                    gravity: 'bottom',
+                    position: 'right',
+                    style: { background: '#f44336' }
+                }).showToast();
+                return;
+            }
+
+            dropZone.classList.add('highlight');
+            setTimeout(() => dropZone.classList.remove('highlight'), 400);
+
+            try {
+                const items = await navigator.clipboard.read();
+                const pastedFiles = [];
+                let pastedText = '';
+
+                for (const item of items) {
+                    try {
+                        const imageType = item.types.find(type => type.startsWith('image/'));
+                        if (imageType) {
+                            const blob = await item.getType(imageType);
+                            pastedFiles.push(blobToFile(blob, imageType, 'pasted-image'));
+                            continue;
+                        }
+
+                        const htmlType = item.types.find(type => type === 'text/html');
+                        if (htmlType) {
+                            const html = await (await item.getType(htmlType)).text();
+                            const embedded = embeddedImageToFile(html);
+                            if (embedded) {
+                                pastedFiles.push(embedded);
+                                continue;
+                            }
+                        }
+
+                        const plainType = item.types.find(type => type === 'text/plain');
+                        if (plainType) {
+                            if (!pastedText) {
+                                pastedText = (await (await item.getType(plainType)).text()).trim();
+                            }
+                            continue;
+                        }
+
+                        const fileType = item.types.find(type => !type.startsWith('text/'));
+                        if (fileType) {
+                            const blob = await item.getType(fileType);
+                            pastedFiles.push(blobToFile(blob, fileType, 'pasted-file'));
+                            continue;
+                        }
+
+                        const htmlFallbackType = item.types.find(type => type.startsWith('text/'));
+                        if (htmlFallbackType && !pastedText) {
+                            pastedText = (await (await item.getType(htmlFallbackType)).text()).trim();
+                        }
+                    } catch (itemError) {
+                        console.error('Could not read clipboard item:', itemError);
+                    }
+                }
+
+                if (pastedFiles.length === 0 && pastedText) {
+                    pastedFiles.push(new File([pastedText], 'pasted-text.txt', { type: 'text/plain' }));
+                }
+
+                if (pastedFiles.length === 0) {
+                    Toastify({
+                        text: 'Clipboard is empty',
+                        duration: 3000,
+                        gravity: 'bottom',
+                        position: 'right',
+                        style: { background: '#607d8b' }
+                    }).showToast();
+                    return;
+                }
+
+                addFiles(pastedFiles);
+                Toastify({
+                    text: `Pasted ${pastedFiles.length} file${pastedFiles.length !== 1 ? 's' : ''}`,
+                    duration: 3000,
+                    gravity: 'bottom',
+                    position: 'right',
+                    style: { background: '#4CAF50' }
+                }).showToast();
+            } catch (error) {
+                console.error('Clipboard paste failed:', error);
+                Toastify({
+                    text: 'Clipboard access denied or not available',
+                    duration: 3000,
+                    gravity: 'bottom',
+                    position: 'right',
+                    style: { background: '#f44336' }
+                }).showToast();
+            }
+        }
+
+        function blobToFile(blob, mime, prefix) {
+            const ext = (mime.split('/')[1] || 'bin').split('+')[0].replace(/[^a-z0-9]/gi, '') || 'bin';
+            return new File([blob], `${prefix}.${ext}`, { type: mime });
+        }
+
+        function embeddedImageToFile(html) {
+            const match = html.match(/<img[^>]+src\s*=\s*["']?data:(image\/[a-zA-Z0-9.+-]+);base64,([^"'\s>]+)/i);
+            if (!match) return null;
+            try {
+                const binary = atob(match[2]);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], { type: match[1] });
+                return blobToFile(blob, match[1], 'pasted-image');
+            } catch (error) {
+                return null;
+            }
+        }
+
         function preventDefaults(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -986,6 +1116,48 @@
         }
         .modal-btn-confirm:hover {
             background: var(--primary-hover);
+        }
+
+        @media (max-width: 480px) {
+            .uploaded-files-section {
+                padding: 14px 10px;
+            }
+            .uploaded-files-header {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .uploaded-files-stats {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .uploaded-file-item {
+                flex-wrap: wrap;
+                padding: 10px 8px;
+            }
+            .uploaded-file-actions {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 8px;
+                justify-content: flex-end;
+            }
+            .action-btn {
+                flex: 1;
+                min-width: 0;
+                min-height: 40px;
+                font-size: 0.85em;
+            }
+            .directory-children {
+                margin-left: 6px;
+                padding-left: 6px;
+            }
+            .rename-modal-content {
+                width: 94%;
+                padding: 16px;
+            }
+            .rename-actions .modal-btn {
+                flex: 1;
+                min-height: 44px;
+            }
         }
         `;
         document.head.appendChild(style);

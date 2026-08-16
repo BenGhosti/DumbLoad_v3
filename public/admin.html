@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{{SITE_TITLE}} - Passkey Management</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="assets/icon.png">
@@ -177,6 +177,40 @@
         }
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            .admin-container {
+                padding: 1rem 0.75rem calc(1rem + env(safe-area-inset-bottom));
+            }
+            .admin-header h1 {
+                font-size: 1.4rem;
+            }
+            .add-section,
+            .passkey-list {
+                padding: 1rem;
+            }
+            .add-form input {
+                min-width: 100%;
+                flex-basis: 100%;
+            }
+            #add-passkey-btn {
+                width: 100%;
+                justify-content: center;
+                min-height: 44px;
+            }
+            .passkey-item {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .passkey-info {
+                flex: 1 1 100%;
+            }
+            .remove-btn {
+                margin-left: auto;
+                min-height: 40px;
+                padding: 8px 16px;
+            }
         }
     </style>
 </head>

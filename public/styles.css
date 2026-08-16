@@ -517,15 +517,85 @@ input:focus-visible {
 
 @media (max-width: 480px) {
     .container {
+        padding: 12px 10px calc(12px + env(safe-area-inset-bottom));
+    }
+
+    h1 {
+        font-size: 1.7rem;
+        margin-bottom: 20px;
+    }
+
+    .theme-toggle {
+        top: 12px;
+        right: 12px;
+    }
+
+    .upload-container {
+        padding: 24px 12px;
+    }
+
+    .upload-content p {
+        font-size: 0.95rem;
+    }
+
+    .button-group {
+        width: 100%;
+        gap: 8px;
+    }
+
+    .button-group button {
+        flex: 1 1 45%;
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 0.9rem;
+    }
+
+    .upload-button {
+        width: 100%;
+        min-height: 48px;
+        font-size: 1rem;
+    }
+
+    .file-list-section {
         padding: 10px;
     }
-    
-    h1 {
-        font-size: 2rem;
+
+    .file-list {
+        max-height: 48vh;
     }
-    
-    .upload-container {
-        padding: 20px 10px;
+
+    .file-row {
+        gap: 8px;
+        padding: 8px 2px;
+    }
+
+    .file-row-name {
+        font-size: 0.8rem;
+    }
+
+    .file-remove-btn {
+        flex: 0 0 32px;
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+
+    .progress-container {
+        padding: 12px;
+    }
+
+    .progress-status {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .progress-details {
+        text-align: left;
+    }
+
+    .site-footer {
+        font-size: 0.7rem;
+        padding: 12px 0 4px;
     }
 
     .pin-container {
@@ -536,5 +606,15 @@ input:focus-visible {
         width: 2.25rem;
         height: 2.75rem;
         font-size: 1.125rem;
+    }
+}
+
+@media (pointer: coarse) {
+    button {
+        min-height: 44px;
+    }
+
+    .clear-files-btn {
+        min-height: 32px;
     }
 }

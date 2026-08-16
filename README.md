@@ -9,14 +9,14 @@ A stupid-simple, self-hosted file uploader. Drop files into a folder through a c
 ## ✨ Features
 
 - 🖱️ **Drag & drop** files *and* folders (folder structure is preserved)
-- 📋 **Clipboard paste** — hit `Ctrl+V` / `Cmd+V` to upload from the clipboard
+- 📋 **Clipboard paste** — hit `Ctrl+V` / `Cmd+V` on desktop, or just **tap the drop zone on mobile** to paste text *or images* from the clipboard
 - 📁 **Multiple file selection** with automatic deduplication
 - ⚡ **Chunked uploads** with retry + resumable transfers (handles huge files)
 - 🔐 **Authentication** — PIN, Passkey (WebAuthn), or **both** (PIN as fallback when you don't have your key)
 - 🧭 **Passkey management** — add/remove security keys from a secret admin page
 - ⏱️ **Configurable session timeout** — from 8 hours down to "instant"
 - 🛡️ **Rate limiting** + brute-force protection with IP tracking
-- 🎨 **Dark mode** + clean, responsive UI
+- 🎨 **Dark mode** + responsive **mobile view** with touch-friendly controls
 - 📋 **Optional file listing** — download, rename, and delete from the browser
 - 🎯 **File extension filtering** and **max file size** limits
 - 🔔 **Notifications** via Apprise (any supported service)
