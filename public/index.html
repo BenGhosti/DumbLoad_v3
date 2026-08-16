@@ -557,24 +557,30 @@
         }
 
         // For drag and drop folders
-        async function getAllFileEntries(dataTransferItems) {
+        async function getAllFileEntries(entries) {
             const fileEntries = [];
 
             async function traverseFileEntry(entry, path = '') {
-                const file = await new Promise((resolve) => {
-                    entry.file(result => {
-                        const fullPath = path ? `${path}/${entry.name}` : entry.name;
-                        const fileWithPath = new File([result], entry.name, {
-                            type: result.type,
-                            lastModified: result.lastModified
+                const file = await new Promise((resolve, reject) => {
+                    try {
+                        entry.file(result => {
+                            const fullPath = path ? `${path}/${entry.name}` : entry.name;
+                            const fileWithPath = new File([result], entry.name, {
+                                type: result.type,
+                                lastModified: result.lastModified
+                            });
+                            Object.defineProperty(fileWithPath, 'webkitRelativePath', {
+                                value: fullPath,
+                                writable: false,
+                                configurable: true
+                            });
+                            resolve(fileWithPath);
+                        }, error => {
+                            reject(error || new Error(`Could not read file "${entry.name}"`));
                         });
-                        Object.defineProperty(fileWithPath, 'webkitRelativePath', {
-                            value: fullPath,
-                            writable: false,
-                            configurable: true
-                        });
-                        resolve(fileWithPath);
-                    });
+                    } catch (error) {
+                        reject(error);
+                    }
                 });
                 fileEntries.push(file);
             }
@@ -584,11 +590,11 @@
                 const dirPath = path ? `${path}/${entry.name}` : entry.name;
 
                 while (true) {
-                    const entries = await new Promise((resolve, reject) => {
+                    const dirEntries = await new Promise((resolve, reject) => {
                         dirReader.readEntries(resolve, reject);
                     });
-                    if (entries.length === 0) break;
-                    for (const childEntry of entries) {
+                    if (dirEntries.length === 0) break;
+                    for (const childEntry of dirEntries) {
                         if (childEntry.isFile) {
                             await traverseFileEntry(childEntry, dirPath);
                         } else if (childEntry.isDirectory) {
@@ -598,15 +604,12 @@
                 }
             }
 
-            for (const item of dataTransferItems) {
+            for (const entry of entries) {
                 try {
-                    const entry = item.webkitGetAsEntry();
-                    if (entry) {
-                        if (entry.isFile) {
-                            await traverseFileEntry(entry);
-                        } else if (entry.isDirectory) {
-                            await traverseDirectoryEntry(entry);
-                        }
+                    if (entry.isFile) {
+                        await traverseFileEntry(entry);
+                    } else if (entry.isDirectory) {
+                        await traverseDirectoryEntry(entry);
                     }
                 } catch (error) {
                     console.error('Error processing drop item:', error);
@@ -652,37 +655,63 @@
 
         async function handleDrop(e) {
             const items = e.dataTransfer.items;
-            if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
-                // Show loading state
-                fileListSection.style.display = 'block';
-                const loadingItem = document.createElement('div');
-                loadingItem.className = 'file-row loading';
-                loadingItem.textContent = 'Processing dropped items...';
-                fileList.appendChild(loadingItem);
+            const hasEntryApi = items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function';
 
-                try {
-                    const newFiles = await getAllFileEntries(items);
-                    loadingItem.remove();
-
-                    if (newFiles.length === 0) {
-                        console.warn('No valid files found in drop');
-                        renderFileList();
-                        return;
+            // webkitGetAsEntry() only works while the drop event's drag data store
+            // is readable, so all entries must be captured synchronously here.
+            const entries = [];
+            if (hasEntryApi) {
+                for (let i = 0; i < items.length; i++) {
+                    try {
+                        const entry = items[i].kind === 'file' ? items[i].webkitGetAsEntry() : null;
+                        if (entry) entries.push(entry);
+                    } catch (error) {
+                        console.warn('Could not read drop entry:', error);
                     }
-
-                    addFiles(newFiles);
-                } catch (error) {
-                    console.error('Error processing dropped items:', error);
-                    loadingItem.textContent = `Error: ${error.message}`;
-                    loadingItem.style.color = 'var(--danger-color)';
-                    setTimeout(() => {
-                        loadingItem.remove();
-                        renderFileList();
-                    }, 3000);
                 }
-            } else {
-                // Handle regular files (not folders)
+            }
+
+            const hasDirectory = entries.some(entry => entry.isDirectory);
+
+            if (!hasDirectory && e.dataTransfer.files.length > 0) {
+                // Plain files: dataTransfer.files reliably contains every dropped file.
                 addFiles([...e.dataTransfer.files]);
+                return;
+            }
+
+            // Folder(s) dropped (or entries-only fallback): preserve directory structure.
+            fileListSection.style.display = 'block';
+            const loadingItem = document.createElement('div');
+            loadingItem.className = 'file-row loading';
+            loadingItem.textContent = 'Processing dropped items...';
+            fileList.appendChild(loadingItem);
+
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error('Timed out while processing dropped items')), 30000);
+            });
+
+            try {
+                const newFiles = await Promise.race([getAllFileEntries(entries), timeoutPromise]);
+                loadingItem.remove();
+
+                if (newFiles.length === 0) {
+                    console.warn('No valid files found in drop');
+                    renderFileList();
+                    return;
+                }
+
+                addFiles(newFiles);
+            } catch (error) {
+                console.error('Error processing dropped items:', error);
+                loadingItem.textContent = `Error: ${error.message}`;
+                loadingItem.style.color = 'var(--danger-color)';
+                setTimeout(() => {
+                    loadingItem.remove();
+                    renderFileList();
+                }, 3000);
+            } finally {
+                clearTimeout(timeoutId);
             }
         }
 
