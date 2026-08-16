@@ -160,6 +160,17 @@ TRUST_PROXY=true
 
 ---
 
-## 📝 License
+## License
 
-ISC — do whatever you want, just keep the copyright notice.
+Copyright (c) 2026 BenGhosti. All rights reserved.
+
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to use and distribute the software in its original, unmodified form, subject to the following conditions:
+
+
+1. **Attribution:** The above copyright notice and this permission notice must be included in all copies or substantial portions of the Software.
+2. **Non-Commercial Use:** The software may only be used and distributed for non-commercial purposes. Commercial use of any kind is strictly prohibited.
+3. **No Publication of Modifications:** You may modify the software for your own personal use. However, you are strictly prohibited from publishing, distributing, or sharing any modified versions of the software.
+
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY.

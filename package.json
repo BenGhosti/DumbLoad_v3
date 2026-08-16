@@ -13,7 +13,7 @@
   },
   "keywords": [],
   "author": "BenGhosti",
-  "license": "ISC",
+  "license": "SEE LICENSE IN README.md",
   "description": "A simple file upload application",
   "dependencies": {
     "@simplewebauthn/server": "^13.3.2",
