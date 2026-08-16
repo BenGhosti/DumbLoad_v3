@@ -516,12 +516,9 @@
                 const row = document.createElement('div');
                 row.className = 'file-row';
 
-                const removeBtn = document.createElement('button');
-                removeBtn.className = 'file-remove-btn';
-                removeBtn.type = 'button';
-                removeBtn.setAttribute('aria-label', 'Remove file');
-                removeBtn.textContent = '\u2715';
-                removeBtn.addEventListener('click', () => removeFile(index));
+                const idx = document.createElement('div');
+                idx.className = 'file-row-index';
+                idx.textContent = index + 1;
 
                 const info = document.createElement('div');
                 info.className = 'file-row-info';
@@ -537,8 +534,17 @@
 
                 info.appendChild(name);
                 info.appendChild(size);
-                row.appendChild(removeBtn);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'file-remove-btn';
+                removeBtn.type = 'button';
+                removeBtn.setAttribute('aria-label', 'Remove file');
+                removeBtn.textContent = '\u2715';
+                removeBtn.addEventListener('click', () => removeFile(index));
+
+                row.appendChild(idx);
                 row.appendChild(info);
+                row.appendChild(removeBtn);
                 fileList.appendChild(row);
             });
 

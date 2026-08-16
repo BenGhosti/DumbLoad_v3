@@ -186,7 +186,7 @@ input:focus-visible {
     background: var(--container-bg);
     border-radius: 10px;
     border: 1px solid var(--border-color);
-    padding: 15px;
+    padding: 12px 14px 16px;
     text-align: left;
 }
 
@@ -194,36 +194,41 @@ input:focus-visible {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 #fileListTitle {
     font-weight: 600;
     color: var(--text-color);
-    font-size: 0.95rem;
+    font-size: 0.85rem;
+    opacity: 0.85;
 }
 
 .clear-files-btn {
-    background: var(--danger-color);
-    color: white;
-    border: none;
-    padding: 6px 12px;
+    background: transparent;
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+    padding: 4px 10px;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 0.85rem;
-    transition: opacity 0.3s;
+    font-size: 0.78rem;
+    font-weight: 500;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
 .clear-files-btn:hover:not(:disabled) {
     background: var(--danger-color);
-    opacity: 0.85;
+    color: white;
+    opacity: 1;
     transform: none;
 }
 
 .file-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     max-height: 38vh;
     overflow-y: auto;
     padding-right: 4px;
@@ -233,11 +238,13 @@ input:focus-visible {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 10px;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border-color);
     animation: fade-in-up 0.2s ease-out both;
+}
+
+.file-row:last-child {
+    border-bottom: none;
 }
 
 .file-row.loading {
@@ -245,17 +252,51 @@ input:focus-visible {
     color: var(--text-color);
     opacity: 0.7;
     animation: pulse 1.5s infinite;
+    border-bottom: none;
+}
+
+.file-row-index {
+    flex: 0 0 auto;
+    width: 20px;
+    color: var(--text-color);
+    opacity: 0.4;
+    font-size: 0.75rem;
+    text-align: right;
+}
+
+.file-row-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.file-row-name {
+    color: var(--text-color);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-row-size {
+    flex: 0 0 auto;
+    color: var(--text-color);
+    opacity: 0.55;
+    font-size: 0.72rem;
+    white-space: nowrap;
 }
 
 .file-remove-btn {
     flex: 0 0 auto;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     padding: 0;
-    border-radius: 50%;
-    background: var(--danger-color);
-    color: white;
-    font-size: 0.8rem;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--danger-color);
+    font-size: 0.75rem;
     line-height: 1;
     display: flex;
     align-items: center;
@@ -264,28 +305,9 @@ input:focus-visible {
 
 .file-remove-btn:hover:not(:disabled) {
     background: var(--danger-color);
-    opacity: 0.85;
+    color: white;
+    opacity: 1;
     transform: none;
-}
-
-.file-row-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.file-row-name {
-    color: var(--text-color);
-    font-size: 0.9rem;
-    word-break: break-all;
-}
-
-.file-row-size {
-    color: var(--text-color);
-    opacity: 0.6;
-    font-size: 0.75rem;
 }
 
 @keyframes pulse {
@@ -295,11 +317,17 @@ input:focus-visible {
 }
 
 .upload-button {
-    margin-top: 20px;
-    width: 100%;
-    max-width: 200px;
+    margin-top: 14px;
+    width: auto;
+    min-width: 160px;
+    padding: 9px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 6px;
+    display: block;
     margin-left: auto;
     margin-right: auto;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.25);
 }
 
 .button-group {
