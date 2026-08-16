@@ -32,7 +32,16 @@ const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
 function getRpContext(req) {
   const explicitRpId = (process.env.DUMBLOAD_RP_ID || '').trim();
   const rpId = explicitRpId || req.hostname || config.rpId || 'localhost';
-  const rpOrigin = `${req.protocol}://${req.get('host')}`;
+
+  // Determine the origin protocol. Prefer req.protocol, but when BASE_URL is
+  // https and the request arrived as http (reverse proxy terminating TLS while
+  // TRUST_PROXY is off), use https so the origin matches what the browser sees.
+  let protocol = req.protocol;
+  if (protocol === 'http' && /^https:\/\//i.test(process.env.BASE_URL || '')) {
+    protocol = 'https';
+  }
+
+  const rpOrigin = `${protocol}://${req.get('host')}`;
   return { rpId, rpOrigin };
 }
 

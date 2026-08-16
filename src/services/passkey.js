@@ -16,31 +16,36 @@ const { config } = require('../config');
 const logger = require('../utils/logger');
 const passkeyStore = require('./passkeyStore');
 
-// Short-lived challenge storage: randomId -> { challenge, type, expiresAt }
+// Short-lived challenge storage: randomId -> { challenge, type, rpId, rpOrigin, expiresAt }
 const CHALLENGE_TTL = 5 * 60 * 1000; // 5 minutes
 const challenges = new Map();
 
 /**
- * Store a challenge and return a random ID for it
+ * Store a challenge (plus the RP context it was generated with) and return a random ID.
+ * Storing the RP context ensures the verify step uses the EXACT same rpId/origin as
+ * the options step, even if the request host differs slightly between the two calls.
  * @param {string} challenge - Base64URL challenge
  * @param {string} type - 'registration' or 'authentication'
+ * @param {Object} context - { rpId, rpOrigin }
  * @returns {string} Random challenge ID
  */
-function storeChallenge(challenge, type) {
+function storeChallenge(challenge, type, context = {}) {
   const id = crypto.randomBytes(16).toString('hex');
   challenges.set(id, {
     challenge,
     type,
+    rpId: context.rpId || config.rpId,
+    rpOrigin: context.rpOrigin || config.rpOrigin,
     expiresAt: Date.now() + CHALLENGE_TTL
   });
   return id;
 }
 
 /**
- * Retrieve and consume a challenge by ID
+ * Retrieve and consume a challenge entry by ID
  * @param {string} id - Challenge ID
  * @param {string} type - Expected type
- * @returns {string|null} Challenge string or null if invalid/expired
+ * @returns {Object|null} The challenge entry (with challenge, rpId, rpOrigin) or null
  */
 function consumeChallenge(id, type) {
   const entry = challenges.get(id);
@@ -48,7 +53,24 @@ function consumeChallenge(id, type) {
   challenges.delete(id);
   if (entry.type !== type) return null;
   if (Date.now() > entry.expiresAt) return null;
-  return entry.challenge;
+  return entry;
+}
+
+/**
+ * Decode the origin from a WebAuthn response's clientDataJSON (for diagnostics).
+ * @param {Object} response - The credential response JSON
+ * @returns {string} The client origin or "(unavailable)"
+ */
+function getClientOrigin(response) {
+  try {
+    const clientData = response && response.response && response.response.clientDataJSON;
+    if (typeof clientData === 'string') {
+      return JSON.parse(isoBase64URL.toUTF8String(clientData)).origin || '(unknown)';
+    }
+  } catch (err) {
+    /* ignore - diagnostics only */
+  }
+  return '(unavailable)';
 }
 
 // Periodically clean up expired challenges
@@ -89,7 +111,7 @@ async function generatePasskeyRegistrationOptions(passkeyName, context = {}) {
     }
   });
 
-  const challengeId = storeChallenge(options.challenge, 'registration');
+  const challengeId = storeChallenge(options.challenge, 'registration', context);
   return { challengeId, options };
 }
 
@@ -101,22 +123,34 @@ async function generatePasskeyRegistrationOptions(passkeyName, context = {}) {
  * @returns {Promise<Object>} { verified, error?, name? }
  */
 async function verifyPasskeyRegistration(challengeId, response, passkeyName, context = {}) {
-  const expectedChallenge = consumeChallenge(challengeId, 'registration');
-  if (!expectedChallenge) {
+  const entry = consumeChallenge(challengeId, 'registration');
+  if (!entry) {
     return { verified: false, error: 'Registration challenge expired or invalid. Please try again.' };
   }
+
+  const expectedChallenge = entry.challenge;
+  const rpId = context.rpId || entry.rpId || config.rpId;
+  const rpOrigin = context.rpOrigin || entry.rpOrigin || config.rpOrigin;
 
   try {
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: context.rpOrigin || config.rpOrigin,
-      expectedRPID: context.rpId || config.rpId,
+      expectedOrigin: rpOrigin,
+      expectedRPID: rpId,
       requireUserVerification: false
     });
 
     if (!verification.verified || !verification.registrationInfo) {
-      return { verified: false, error: 'Registration verification failed' };
+      const clientOrigin = getClientOrigin(response);
+      logger.warn(
+        `Passkey registration verification failed: expectedOrigin=${rpOrigin}, clientOrigin=${clientOrigin}, expectedRPID=${rpId}`
+      );
+      return {
+        verified: false,
+        error: `Registration verification failed (origin mismatch: server expected ${rpOrigin}, browser reported ${clientOrigin}). ` +
+          'Make sure BASE_URL and the access URL match, and set TRUST_PROXY=true behind a reverse proxy.'
+      };
     }
 
     const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
@@ -136,7 +170,7 @@ async function verifyPasskeyRegistration(challengeId, response, passkeyName, con
     return { verified: true, name: passkeyName };
   } catch (err) {
     logger.error(`Registration verification error: ${err.message}`);
-    return { verified: false, error: 'Registration verification failed' };
+    return { verified: false, error: `Registration verification failed: ${err.message}` };
   }
 }
 
@@ -160,7 +194,7 @@ async function generatePasskeyAuthOptions(context = {}) {
     userVerification: 'preferred'
   });
 
-  const challengeId = storeChallenge(options.challenge, 'authentication');
+  const challengeId = storeChallenge(options.challenge, 'authentication', context);
   return { challengeId, options };
 }
 
@@ -171,14 +205,18 @@ async function generatePasskeyAuthOptions(context = {}) {
  * @returns {Promise<Object>} { verified, error?, name? }
  */
 async function verifyPasskeyAuthentication(challengeId, response, context = {}) {
-  const expectedChallenge = consumeChallenge(challengeId, 'authentication');
-  if (!expectedChallenge) {
+  const entry = consumeChallenge(challengeId, 'authentication');
+  if (!entry) {
     return { verified: false, error: 'Authentication challenge expired or invalid. Please try again.' };
   }
 
   if (!response || typeof response !== 'object' || typeof response.id !== 'string' || !response.id) {
     return { verified: false, error: 'Invalid authentication response' };
   }
+
+  const expectedChallenge = entry.challenge;
+  const rpId = context.rpId || entry.rpId || config.rpId;
+  const rpOrigin = context.rpOrigin || entry.rpOrigin || config.rpOrigin;
 
   const credentialId = response.id;
   const storedKey = await passkeyStore.getPasskey(credentialId);
@@ -197,14 +235,21 @@ async function verifyPasskeyAuthentication(challengeId, response, context = {}) 
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: context.rpOrigin || config.rpOrigin,
-      expectedRPID: context.rpId || config.rpId,
+      expectedOrigin: rpOrigin,
+      expectedRPID: rpId,
       credential,
       requireUserVerification: false
     });
 
     if (!verification.verified || !verification.authenticationInfo) {
-      return { verified: false, error: 'Authentication verification failed' };
+      const clientOrigin = getClientOrigin(response);
+      logger.warn(
+        `Passkey authentication verification failed: expectedOrigin=${rpOrigin}, clientOrigin=${clientOrigin}, expectedRPID=${rpId}`
+      );
+      return {
+        verified: false,
+        error: `Authentication verification failed (origin mismatch: server expected ${rpOrigin}, browser reported ${clientOrigin}).`
+      };
     }
 
     // Update the stored counter to prevent replay attacks
@@ -216,7 +261,7 @@ async function verifyPasskeyAuthentication(challengeId, response, context = {}) 
     return { verified: true, name: storedKey.name };
   } catch (err) {
     logger.error(`Authentication verification error: ${err.message}`);
-    return { verified: false, error: 'Authentication verification failed' };
+    return { verified: false, error: `Authentication verification failed: ${err.message}` };
   }
 }
 
