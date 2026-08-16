@@ -33,12 +33,17 @@ function getRpContext(req) {
   const explicitRpId = (process.env.DUMBLOAD_RP_ID || '').trim();
   const rpId = explicitRpId || req.hostname || config.rpId || 'localhost';
 
-  // Determine the origin protocol. Prefer req.protocol, but when BASE_URL is
-  // https and the request arrived as http (reverse proxy terminating TLS while
-  // TRUST_PROXY is off), use https so the origin matches what the browser sees.
+  // Determine the public-facing origin protocol. The Node.js server only ever
+  // speaks plain HTTP, so detect HTTPS from (in order):
+  //   1. req.protocol (correct when TRUST_PROXY=true is set)
+  //   2. the X-Forwarded-Proto header set by a reverse proxy (e.g. Nginx PM)
+  //   3. BASE_URL starting with https://
   let protocol = req.protocol;
-  if (protocol === 'http' && /^https:\/\//i.test(process.env.BASE_URL || '')) {
-    protocol = 'https';
+  if (protocol === 'http') {
+    const forwardedProto = ((req.headers['x-forwarded-proto'] || '').toString().split(',')[0] || '').trim();
+    if (forwardedProto === 'https' || /^https:\/\//i.test(process.env.BASE_URL || '')) {
+      protocol = 'https';
+    }
   }
 
   const rpOrigin = `${protocol}://${req.get('host')}`;
