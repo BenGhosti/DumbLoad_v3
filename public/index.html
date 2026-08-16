@@ -47,8 +47,14 @@
             </div>
         </div>
         <div id="uploadProgress"></div>
-        <div id="fileList" class="file-list"></div>
-        <button id="uploadButton" class="upload-button" style="display: none;">Upload Files</button>
+        <div id="fileListSection" class="file-list-section" style="display: none;">
+            <div class="file-list-header">
+                <span id="fileListTitle"></span>
+                <button id="clearFilesBtn" class="clear-files-btn" type="button" aria-label="Clear all files">Clear all</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+            <button id="uploadButton" class="upload-button" style="display: none;">Upload Files</button>
+        </div>
         
         <!-- File listing section (controlled by SHOW_FILE_LIST environment variable) -->
         <div id="uploadedFilesList" class="uploaded-files-section" style="display: none;">
@@ -456,8 +462,93 @@
         const fileInput = document.getElementById('fileInput');
         const folderInput = document.getElementById('folderInput');
         const fileList = document.getElementById('fileList');
+        const fileListSection = document.getElementById('fileListSection');
+        const fileListTitle = document.getElementById('fileListTitle');
+        const clearFilesBtn = document.getElementById('clearFilesBtn');
         const uploadButton = document.getElementById('uploadButton');
         let files = [];
+
+        // Stable identity so the same file (name + size) is never added twice.
+        // webkitRelativePath is used when available so equally-named files in
+        // different folders are not wrongly treated as duplicates.
+        function fileIdentity(file) {
+            return `${file.webkitRelativePath || file.name}|${file.size}`;
+        }
+
+        // Append new files (deduplicated) and re-render the list
+        function addFiles(newFiles) {
+            const existing = new Set(files.map(fileIdentity));
+            for (const f of newFiles) {
+                const id = fileIdentity(f);
+                if (existing.has(id)) continue;
+                existing.add(id);
+                files.push(f);
+            }
+            renderFileList();
+            if (AUTO_UPLOAD && files.length > 0) startUploads();
+        }
+
+        function removeFile(index) {
+            files.splice(index, 1);
+            renderFileList();
+        }
+
+        function clearFiles() {
+            files = [];
+            fileInput.value = '';
+            folderInput.value = '';
+            renderFileList();
+        }
+
+        // Render the pending files as a scrollable list with a remove button per row
+        function renderFileList() {
+            fileList.innerHTML = '';
+            const hasFiles = files.length > 0;
+            fileListSection.style.display = hasFiles ? 'block' : 'none';
+            if (!hasFiles) {
+                uploadButton.style.display = 'none';
+                return;
+            }
+
+            fileListTitle.textContent = `${files.length} file${files.length !== 1 ? 's' : ''} selected`;
+
+            files.forEach((file, index) => {
+                const row = document.createElement('div');
+                row.className = 'file-row';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'file-remove-btn';
+                removeBtn.type = 'button';
+                removeBtn.setAttribute('aria-label', 'Remove file');
+                removeBtn.textContent = '\u2715';
+                removeBtn.addEventListener('click', () => removeFile(index));
+
+                const info = document.createElement('div');
+                info.className = 'file-row-info';
+
+                const name = document.createElement('div');
+                name.className = 'file-row-name';
+                name.textContent = file.webkitRelativePath || file.name;
+                name.title = file.webkitRelativePath || file.name;
+
+                const size = document.createElement('div');
+                size.className = 'file-row-size';
+                size.textContent = formatFileSize(file.size);
+
+                info.appendChild(name);
+                info.appendChild(size);
+                row.appendChild(removeBtn);
+                row.appendChild(info);
+                fileList.appendChild(row);
+            });
+
+            if (AUTO_UPLOAD) {
+                uploadButton.style.display = 'none';
+            } else {
+                uploadButton.textContent = `Upload ${files.length} file${files.length !== 1 ? 's' : ''}`;
+                uploadButton.style.display = 'block';
+            }
+        }
 
         // For drag and drop folders
         async function getAllFileEntries(dataTransferItems) {
@@ -537,6 +628,7 @@
         fileInput.addEventListener('change', handleFiles, false);
         folderInput.addEventListener('change', handleFolders, false);
         uploadButton.addEventListener('click', startUploads);
+        clearFilesBtn.addEventListener('click', clearFiles);
         dropZone.addEventListener('paste', handlePaste, false);
 
         function preventDefaults(e) {
@@ -552,38 +644,39 @@
             dropZone.classList.remove('highlight');
         }
 
-        function handleDrop(e) {
+        async function handleDrop(e) {
             const items = e.dataTransfer.items;
             if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
                 // Show loading state
+                fileListSection.style.display = 'block';
                 const loadingItem = document.createElement('div');
-                loadingItem.className = 'file-item loading';
+                loadingItem.className = 'file-row loading';
                 loadingItem.textContent = 'Processing dropped items...';
                 fileList.appendChild(loadingItem);
 
-                getAllFileEntries(items).then(newFiles => {
-                    // Remove loading state
+                try {
+                    const newFiles = await getAllFileEntries(items);
                     loadingItem.remove();
-                    
+
                     if (newFiles.length === 0) {
                         console.warn('No valid files found in drop');
+                        renderFileList();
                         return;
                     }
 
-                    files = newFiles;
-                    updateFileList();
-                    if (AUTO_UPLOAD) startUploads();
-                }).catch(error => {
+                    addFiles(newFiles);
+                } catch (error) {
                     console.error('Error processing dropped items:', error);
                     loadingItem.textContent = `Error: ${error.message}`;
                     loadingItem.style.color = 'var(--danger-color)';
-                    setTimeout(() => loadingItem.remove(), 3000);
-                });
+                    setTimeout(() => {
+                        loadingItem.remove();
+                        renderFileList();
+                    }, 3000);
+                }
             } else {
                 // Handle regular files (not folders)
-                files = [...e.dataTransfer.files];
-                updateFileList();
-                if (AUTO_UPLOAD) startUploads();
+                addFiles([...e.dataTransfer.files]);
             }
         }
 
@@ -615,204 +708,42 @@
             }
 
             if (pastedFiles.length > 0) {
-                files = pastedFiles;
-                updateFileList();
-                if (AUTO_UPLOAD) startUploads();
+                addFiles(pastedFiles);
             }
         }
 
         function handleFiles(e) {
-            // Reset the input to allow selecting the same file again
             const input = e.target;
-            files = [...input.files];
-            updateFileList();
-            if (AUTO_UPLOAD) {
-                startUploads().finally(() => {
-                    // Reset the input value after upload
-                    input.value = '';
-                });
-            }
+            addFiles([...input.files]);
+            // Reset the input to allow selecting the same file again
+            input.value = '';
         }
 
         function handleFolders(e) {
-            // Reset the input to allow selecting the same folder again
             const input = e.target;
-            files = [...input.files];
+            const selectedFiles = [...input.files];
+
             // Check for webkitRelativePath support
-            const missingRelPath = files.some(f => !('webkitRelativePath' in f) || !f.webkitRelativePath);
+            const missingRelPath = selectedFiles.some(f => !('webkitRelativePath' in f) || !f.webkitRelativePath);
             if (missingRelPath) {
                 alert('Your browser does not support folder uploads with structure. Please use a modern browser like Chrome or Edge.');
-                files = [];
-                updateFileList();
                 input.value = '';
                 return;
             }
-            console.log('Folder selection files:', files.map(f => ({
+
+            console.log('Folder selection files:', selectedFiles.map(f => ({
                 name: f.name,
                 path: f.webkitRelativePath,
                 size: f.size
             })));
-            updateFileList();
-            if (AUTO_UPLOAD) {
-                startUploads().finally(() => {
-                    // Reset the input value after upload
-                    input.value = '';
-                });
-            }
-        }
 
-        function updateFileList() {
-
-            fileList.innerHTML = '';
-            
-            const folders = new Map();
-            let rootFiles = [];
-            
-            // First, determine if we have a root folder structure
-            const hasRootFolder = files.some(file => {
-                const hasPath = 'webkitRelativePath' in file && file.webkitRelativePath;
-                return hasPath && file.webkitRelativePath.includes('/');
-            });
-            
-            files.forEach(file => {
-                const path = file.webkitRelativePath || file.name;
-                
-                if (hasRootFolder) {
-                    const parts = path.split('/');
-
-                    if (parts.length > 1) {
-                        const folderName = parts[0];
-
-                        if (!folders.has(folderName)) {
-                            folders.set(folderName, {
-                                name: folderName,
-                                files: [],
-                                size: 0,
-                                subfolders: new Map()
-                            });
-                        }
-                        
-                        const folder = folders.get(folderName);
-                        folder.files.push(file);
-                        folder.size += file.size;
-                        
-                        if (parts.length > 2) {
-
-                            let currentFolder = folder;
-                            const subfolderPath = parts.slice(1, -1);
-                            
-                            for (const subfolder of subfolderPath) {
-                                if (!currentFolder.subfolders.has(subfolder)) {
-                                    currentFolder.subfolders.set(subfolder, {
-                                        name: subfolder,
-                                        files: [],
-                                        size: 0,
-                                        subfolders: new Map()
-                                    });
-                                }
-                                currentFolder = currentFolder.subfolders.get(subfolder);
-                                currentFolder.files.push(file);
-                                currentFolder.size += file.size;
-                            }
-                        }
-                    } else {
-                        rootFiles.push(file);
-                    }
-                } else {
-                    rootFiles.push(file);
-                }
-            });
-            
-            
-            // Function to render a folder's contents
-            function renderFolder(folder, level = 0) {
-                const folderItem = document.createElement('div');
-                folderItem.className = 'file-item folder';
-                
-                // Calculate total files including subfolders
-                const totalFiles = folder.files.filter(f => {
-                    const relativePath = f.webkitRelativePath.substring(folder.name.length + 1);
-                    return relativePath.split('/').length === 1;
-                }).length;
-                
-                folderItem.textContent = `📁 ${folder.name}/ (${formatFileSize(folder.size)} - ${totalFiles} files)`;
-                
-                // Add files in folder
-                const filesList = document.createElement('div');
-                filesList.className = 'folder-files';
-                filesList.style.marginLeft = `${level * 20}px`;
-                
-                // First add direct files
-                folder.files
-                    .filter(f => f.webkitRelativePath.substring(folder.name.length + 1).split('/').length === 1)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .forEach(file => {
-                        const fileItem = document.createElement('div');
-                        fileItem.className = 'file-item nested';
-                        const relativePath = file.webkitRelativePath.substring(folder.name.length + 1);
-                        fileItem.textContent = `📄 ${relativePath} (${formatFileSize(file.size)})`;
-                        filesList.appendChild(fileItem);
-                    });
-                
-                // Then add subfolders recursively
-                if (folder.subfolders.size > 0) {
-                    Array.from(folder.subfolders.values())
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .forEach(subfolder => {
-                            filesList.appendChild(renderFolder(subfolder, level + 1));
-                        });
-                }
-                
-                folderItem.appendChild(filesList);
-                return folderItem;
-            }
-            
-            // Add root files first
-            rootFiles.sort((a, b) => a.name.localeCompare(b.name))
-                .forEach(file => {
-                    const fileItem = document.createElement('div');
-                    fileItem.className = 'file-item';
-                    fileItem.textContent = `📄 ${file.name} (${formatFileSize(file.size)})`;
-                    fileList.appendChild(fileItem);
-                });
-            
-            // Add folders
-            Array.from(folders.values())
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .forEach(folder => {
-                    fileList.appendChild(renderFolder(folder));
-                });
-            
-            uploadButton.style.display = (!AUTO_UPLOAD && files.length > 0) ? 'block' : 'none';
+            addFiles(selectedFiles);
+            input.value = '';
         }
 
         // Add this CSS to the existing styles
         const style = document.createElement('style');
         style.textContent = `
-        .folder-files {
-            margin-left: 20px;
-            border-left: 1px solid var(--border-color);
-            padding-left: 10px;
-            margin-top: 5px;
-        }
-        .file-item.nested {
-            font-size: 0.9em;
-            margin-top: 3px;
-        }
-        .file-item.loading {
-            text-align: center;
-            padding: 15px;
-            background: var(--container-bg);
-            border-radius: 5px;
-            margin: 10px 0;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-        
         /* Uploaded files listing styles */
         .uploaded-files-section {
             margin-top: 30px;
@@ -1084,11 +1015,8 @@
                     }
                 }).showToast();
 
-                // Reset file inputs
-                fileInput.value = '';
-                folderInput.value = '';
-                files = [];
-                updateFileList();
+                // Reset file inputs and pending list
+                clearFiles();
                 
                 // Refresh the uploaded files list if it's enabled
                 if (SHOW_FILE_LIST && fileListManager) {
