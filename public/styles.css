@@ -49,6 +49,12 @@ body {
     padding: 20px;
     text-align: center;
     position: relative;
+    animation: fade-in-up 0.4s ease-out both;
+}
+
+@keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .theme-toggle {
@@ -81,6 +87,7 @@ h1 {
     margin-bottom: 30px;
     font-size: 2.5rem;
     font-weight: 700;
+    letter-spacing: -0.5px;
     padding-right: 60px;
 }
 
@@ -94,9 +101,16 @@ h1 {
     margin-bottom: 20px;
 }
 
+.upload-container:hover {
+    border-color: var(--highlight-color);
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.12);
+}
+
 .upload-container.highlight {
     border-color: var(--highlight-color);
     background: var(--container-bg);
+    box-shadow: 0 6px 24px rgba(33, 150, 243, 0.22);
+    transform: scale(1.01);
 }
 
 .upload-content {
@@ -131,16 +145,27 @@ button {
     border-radius: 5px;
     font-size: 1rem;
     cursor: pointer;
-    transition: background 0.3s ease;
+    transition: background 0.3s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-button:hover {
+button:hover:not(:disabled) {
     background: var(--highlight-hover);
+    transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
 }
 
 button:disabled {
     background: var(--border-color);
     cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--highlight-color);
+    outline-offset: 2px;
 }
 
 .file-list {
@@ -156,6 +181,7 @@ button:disabled {
     border-radius: 5px;
     text-align: left;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    animation: fade-in-up 0.25s ease-out both;
 }
 
 .upload-button {
@@ -223,8 +249,16 @@ button:disabled {
 
 .progress-bar {
     height: 100%;
-    background: var(--highlight-color);
+    background: linear-gradient(90deg, var(--highlight-color), #64b5f6, var(--highlight-color));
+    background-size: 200% 100%;
     transition: width 0.3s ease;
+    animation: progress-flow 1.6s linear infinite;
+    border-radius: 10px;
+}
+
+@keyframes progress-flow {
+    from { background-position: 0% 0; }
+    to { background-position: -200% 0; }
 }
 
 /* Modal Styles */

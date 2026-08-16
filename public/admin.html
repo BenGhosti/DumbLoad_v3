@@ -12,12 +12,13 @@
             max-width: 600px;
             margin: 0 auto;
             padding: 2rem 1rem;
+            animation: fade-in-up 0.4s ease-out both;
         }
         .admin-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
         .admin-header h1 {
             margin: 0;
@@ -30,6 +31,17 @@
         }
         .back-link:hover {
             text-decoration: underline;
+        }
+        .secure-warning {
+            display: none;
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.35);
+            color: var(--danger-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            line-height: 1.45;
         }
         .add-section {
             background: var(--container-bg);
@@ -61,6 +73,27 @@
         .add-form input:focus {
             outline: none;
             border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.25);
+        }
+        #add-passkey-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.15s ease, background 0.2s ease;
+        }
+        #add-passkey-btn:not(:disabled):hover {
+            transform: translateY(-1px);
+        }
+        #add-passkey-btn:not(:disabled):active {
+            transform: scale(0.97);
+        }
+        .btn-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
         }
         .passkey-list {
             background: var(--container-bg);
@@ -79,6 +112,7 @@
             align-items: center;
             padding: 0.9rem 0;
             border-bottom: 1px solid var(--border-color);
+            animation: fade-in-up 0.25s ease-out both;
         }
         .passkey-item:last-child {
             border-bottom: none;
@@ -105,9 +139,11 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 0.85rem;
+            transition: background 0.2s ease, transform 0.15s ease;
         }
         .remove-btn:hover {
             background: #c0392b;
+            transform: translateY(-1px);
         }
         .empty-message {
             text-align: center;
@@ -122,6 +158,7 @@
             border-radius: 6px;
             font-size: 0.9rem;
             display: none;
+            animation: fade-in-up 0.25s ease-out both;
         }
         .status-message.success {
             display: block;
@@ -133,6 +170,14 @@
             background: rgba(244, 67, 54, 0.15);
             color: var(--danger-color);
         }
+
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -140,6 +185,13 @@
         <div class="admin-header">
             <h1>Passkey Management</h1>
             <a href="/" class="back-link">Back to Upload</a>
+        </div>
+
+        <div id="secure-warning" class="secure-warning">
+            <strong>Passkeys are not available in this browser context.</strong><br>
+            Passkeys/WebAuthn only work over <strong>HTTPS</strong> (e.g. via a reverse proxy)
+            or on <strong>localhost</strong>. This connection is insecure, so you cannot
+            add or use passkeys here. PIN login is unaffected.
         </div>
 
         <div class="add-section">
@@ -164,11 +216,25 @@
             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.setAttribute('data-theme', savedTheme);
 
+        // Passkeys require a secure context (HTTPS or localhost)
+        const canUseWebAuthn = window.isSecureContext === true &&
+            typeof navigator.credentials === 'object' &&
+            typeof navigator.credentials.get === 'function' &&
+            typeof navigator.credentials.create === 'function';
+
+        if (!canUseWebAuthn) {
+            document.getElementById('secure-warning').style.display = 'block';
+        }
+
         const statusMessage = (text, type) => {
             const el = document.getElementById('status-message');
             el.textContent = text;
             el.className = 'status-message ' + type;
-            setTimeout(() => { el.className = 'status-message'; }, 4000);
+            setTimeout(() => { el.className = 'status-message'; }, 5000);
+        };
+
+        const redirectToLogin = () => {
+            window.location.href = '/login.html';
         };
 
         const loadPasskeys = async () => {
@@ -176,7 +242,7 @@
             try {
                 const response = await fetch('/api/passkey/list', { credentials: 'include' });
                 if (response.status === 401) {
-                    window.location.href = '/login.html';
+                    redirectToLogin();
                     return;
                 }
                 const data = await response.json();
@@ -229,6 +295,10 @@
                     method: 'DELETE',
                     credentials: 'include'
                 });
+                if (response.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
                 if (response.ok) {
                     statusMessage(`Passkey "${name}" removed`, 'success');
                     loadPasskeys();
@@ -242,17 +312,32 @@
             }
         };
 
+        const setAddButtonLoading = (loading) => {
+            const btn = document.getElementById('add-passkey-btn');
+            if (loading) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="btn-spinner"></span> Waiting for key...';
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Add Passkey';
+            }
+        };
+
         const addPasskey = async () => {
+            if (!canUseWebAuthn) {
+                statusMessage('Passkeys are not available in this browser context. Use HTTPS or localhost.', 'error');
+                return;
+            }
+
             const nameInput = document.getElementById('passkey-name');
             const name = nameInput.value.trim();
-            const btn = document.getElementById('add-passkey-btn');
 
             if (!name) {
                 statusMessage('Please enter a name for the passkey', 'error');
                 return;
             }
 
-            btn.disabled = true;
+            setAddButtonLoading(true);
             try {
                 // 1. Get registration options
                 const optionsResponse = await fetch('/api/passkey/register-options', {
@@ -261,9 +346,13 @@
                     body: JSON.stringify({ name }),
                     credentials: 'include'
                 });
+                if (optionsResponse.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
                 const optionsData = await optionsResponse.json();
                 if (!optionsData.challengeId) {
-                    throw new Error('Failed to get registration options');
+                    throw new Error(optionsData.error || 'Failed to get registration options');
                 }
 
                 // 2. Create credential
@@ -282,6 +371,10 @@
                     }),
                     credentials: 'include'
                 });
+                if (verifyResponse.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
                 const verifyData = await verifyResponse.json();
 
                 if (verifyData.success) {
@@ -294,12 +387,14 @@
             } catch (err) {
                 if (err.name === 'NotAllowedError') {
                     statusMessage('Registration cancelled', 'error');
+                } else if (err.name === 'SecurityError') {
+                    statusMessage('Passkey error: browsers only allow passkeys over HTTPS or localhost.', 'error');
                 } else {
                     console.error('Passkey registration error:', err);
                     statusMessage('Registration failed: ' + (err.message || err), 'error');
                 }
             } finally {
-                btn.disabled = false;
+                setAddButtonLoading(false);
             }
         };
 

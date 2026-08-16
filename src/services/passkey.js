@@ -71,7 +71,8 @@ async function generatePasskeyRegistrationOptions(passkeyName) {
   const existingKeys = await passkeyStore.getAllPasskeys();
   const excludeCredentials = existingKeys.map(key => ({
     id: key.id,
-    transports: key.transports || []
+    // Omit transports when empty: some browsers/authenticators reject empty arrays
+    ...(key.transports && key.transports.length > 0 ? { transports: key.transports } : {})
   }));
 
   const options = await generateRegistrationOptions({
@@ -149,7 +150,8 @@ async function generatePasskeyAuthOptions() {
   const existingKeys = await passkeyStore.getAllPasskeys();
   const allowCredentials = existingKeys.map(key => ({
     id: key.id,
-    transports: key.transports || []
+    // Omit transports when empty: some browsers/authenticators reject empty arrays
+    ...(key.transports && key.transports.length > 0 ? { transports: key.transports } : {})
   }));
 
   const options = await generateAuthenticationOptions({

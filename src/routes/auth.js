@@ -57,6 +57,15 @@ router.post('/verify-pin', (req, res) => {
       return res.json({ success: true, error: null, path: '/' });
     }
 
+    // Missing/empty PIN is a bad request
+    if (!pin || typeof pin !== 'string' || pin.trim() === '') {
+      logger.warn(`Empty PIN from IP: ${ip}`);
+      return res.status(400).json({
+        success: false,
+        error: 'PIN is required'
+      });
+    }
+
     // Validate PIN format
     const cleanedPin = validatePin(pin);
     if (!cleanedPin) {

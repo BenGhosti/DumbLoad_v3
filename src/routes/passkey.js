@@ -24,6 +24,18 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
 
 /**
+ * Middleware that blocks ALL passkey management endpoints when the admin
+ * interface is disabled (DUMBLOAD_ADMIN_PATH not set in .env).
+ * Login endpoints (auth-options/auth-verify) are NOT affected.
+ */
+function requireAdminEnabled(req, res, next) {
+  if (!config.adminEnabled) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  return next();
+}
+
+/**
  * Generate authentication options for passkey login (public)
  */
 router.post('/auth-options', async (req, res) => {
@@ -85,7 +97,7 @@ router.post('/auth-verify', async (req, res) => {
 /**
  * Generate registration options for a new passkey (admin-protected)
  */
-router.post('/register-options', requireAuth(), async (req, res) => {
+router.post('/register-options', requireAdminEnabled, requireAuth(), async (req, res) => {
   const { name } = req.body;
   if (!name || typeof name !== 'string' || name.trim() === '') {
     return res.status(400).json({ error: 'Passkey name is required' });
@@ -96,14 +108,14 @@ router.post('/register-options', requireAuth(), async (req, res) => {
     res.json({ challengeId, options });
   } catch (err) {
     logger.error(`Failed to generate registration options: ${err.message}`);
-    res.status(500).json({ error: 'Failed to generate registration options' });
+    res.status(500).json({ error: 'Failed to generate registration options', details: err.message });
   }
 });
 
 /**
  * Verify and store a new passkey (admin-protected)
  */
-router.post('/register-verify', requireAuth(), async (req, res) => {
+router.post('/register-verify', requireAdminEnabled, requireAuth(), async (req, res) => {
   const { challengeId, response, name } = req.body;
   if (!challengeId || !response) {
     return res.status(400).json({ error: 'Missing challengeId or response' });
@@ -129,7 +141,7 @@ router.post('/register-verify', requireAuth(), async (req, res) => {
 /**
  * List registered passkeys (admin-protected)
  */
-router.get('/list', requireAuth(), async (req, res) => {
+router.get('/list', requireAdminEnabled, requireAuth(), async (req, res) => {
   try {
     const keys = await passkeyStore.getAllPasskeys();
     // Don't expose sensitive data (publicKey, counter)
@@ -151,7 +163,7 @@ router.get('/list', requireAuth(), async (req, res) => {
 /**
  * Remove a passkey (admin-protected)
  */
-router.delete('/:credentialId', requireAuth(), async (req, res) => {
+router.delete('/:credentialId', requireAdminEnabled, requireAuth(), async (req, res) => {
   const { credentialId } = req.params;
   try {
     const removed = await passkeyStore.removePasskey(credentialId);

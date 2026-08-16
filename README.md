@@ -47,8 +47,8 @@ services:
     volumes:
       # App config (passkeys etc.) - Unraid appdata
       - /mnt/user/appdata/dumbload:/app/config
-      # Uploaded/download files - own share
-      - /mnt/user/dumbload-files:/app/uploads
+      # Uploaded/download files - folder inside appdata
+      - /mnt/user/appdata/dumbload-files:/app/uploads
     env_file:
       - .env
     environment:
@@ -74,7 +74,7 @@ docker compose up -d
 2. Upload a File - It'll show up in your files folder
 3. Rejoice in the glory of your dumb uploads
 
-> **Note:** `UPLOAD_DIR` and `DUMBLOAD_CONFIG_DIR` are container-specific paths set in compose (they must match the volume mounts), not user settings. All other settings live in the `.env` file. The host paths (`/mnt/user/appdata/dumbload`, `/mnt/user/dumbload-files`) are configurable via `APP_DATA_PATH` and `FILES_PATH` in `.env`.
+> **Note:** `UPLOAD_DIR` and `DUMBLOAD_CONFIG_DIR` are container-specific paths set in compose (they must match the volume mounts), not user settings. All other settings live in the `.env` file. The host paths (`/mnt/user/appdata/dumbload`, `/mnt/user/appdata/dumbload-files`) are configurable via `APP_DATA_PATH` and `FILES_PATH` in `.env`.
 
 ### Option 3: Running Locally (For Developers)
 
@@ -108,7 +108,11 @@ For local development setup, troubleshooting, and advanced usage, see the dedica
 | BASE_URL                                                 | Base URL for the application                                                                                                          | http://localhost:PORT                                         | No       |
 | MAX_FILE_SIZE                                            | Maximum file size in MB                                                                                                               | 1024                                                          | No       |
 | DUMBLOAD_PIN                                             | PIN protection (4-10 digits)                                                                                                          | None                                                          | No       |
-| DUMBLOAD_TITLE                                           | Site title displayed in header                                                                                                        | DumbLoad                                                      | No       |
+| DUMBLOAD_AUTH_MODE                                       | Authentication mode: `pin`, `passkey`, or `both`                                                                                      | pin                                                           | No       |
+| DUMBLOAD_RP_ID                                           | WebAuthn Relying Party ID (defaults to hostname from BASE_URL)                                                                        | hostname of BASE_URL                                          | No       |
+| DUMBLOAD_RP_NAME                                         | WebAuthn Relying Party name                                                                                                           | DumbLoad                                                      | No       |
+| DUMBLOAD_ADMIN_PATH                                      | Secret admin path for passkey management. Empty = admin disabled (no passkey changes possible)                                        | (disabled)                                                    | No       |
+| DUMBLOAD_CONFIG_DIR                                      | Directory for app config (passkeys); defaults to the upload directory                                                                 | upload dir                                                    | No       |
 | APPRISE_URL                                              | Apprise URL for notifications                                                                                                         | None                                                          | No       |
 | APPRISE_MESSAGE                                          | Notification message template                                                                                                         | New file uploaded {filename} ({size}), Storage used {storage} | No       |
 | APPRISE_SIZE_UNIT                                        | Size unit for notifications (B, KB, MB, GB, TB, or Auto)                                                                              | Auto                                                          | No       |
@@ -119,6 +123,8 @@ For local development setup, troubleshooting, and advanced usage, see the dedica
 | ALLOWED_ORIGINS                                          | You can restrict CORS to your BASE_URL or a comma-separated list of specified origins, which will automatically include your base_url | '\*'                                                          | No       |
 | UPLOAD_DIR                                               | Directory for uploads (Docker/production; should be `/app/uploads` in container)                                                      | None (see LOCAL_UPLOAD_DIR fallback)                          | No       |
 | LOCAL_UPLOAD_DIR                                         | Directory for uploads (local dev, fallback: './local_uploads')                                                                        | ./local_uploads                                               | No       |
+| APP_DATA_PATH (compose only)                             | Host path for app config - Unraid appdata folder                                                                                      | /mnt/user/appdata/dumbload                                    | No       |
+| FILES_PATH (compose only)                                | Host path for uploaded files - folder inside appdata                                                                                  | /mnt/user/appdata/dumbload-files                              | No       |
 | TRUST_PROXY                                              | Trust proxy headers (X-Forwarded-For) - only enable if behind a reverse proxy                                                         | false                                                         | No       |
 | TRUSTED_PROXY_IPS                                        | Comma-separated list of trusted proxy IPs (optional, requires TRUST_PROXY=true)                                                       | None                                                          | No       |
 

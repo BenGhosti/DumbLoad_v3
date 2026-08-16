@@ -344,7 +344,7 @@
                 const label = document.createElement('div');
                 label.className = 'progress-label';
                 const fileName = this.file.webkitRelativePath || this.file.name;
-                label.textContent = escapeHtml(fileName);
+                label.textContent = fileName;
 
                 const progress = document.createElement('div');
                 progress.className = 'progress';
@@ -733,7 +733,7 @@
                     return relativePath.split('/').length === 1;
                 }).length;
                 
-                folderItem.textContent = `📁 ${escapeHtml(folder.name)}/ (${formatFileSize(folder.size)} - ${totalFiles} files)`;
+                folderItem.textContent = `📁 ${folder.name}/ (${formatFileSize(folder.size)} - ${totalFiles} files)`;
                 
                 // Add files in folder
                 const filesList = document.createElement('div');
@@ -748,7 +748,7 @@
                         const fileItem = document.createElement('div');
                         fileItem.className = 'file-item nested';
                         const relativePath = file.webkitRelativePath.substring(folder.name.length + 1);
-                        fileItem.textContent = `📄 ${escapeHtml(relativePath)} (${formatFileSize(file.size)})`;
+                        fileItem.textContent = `📄 ${relativePath} (${formatFileSize(file.size)})`;
                         filesList.appendChild(fileItem);
                     });
                 
@@ -770,7 +770,7 @@
                 .forEach(file => {
                     const fileItem = document.createElement('div');
                     fileItem.className = 'file-item';
-                    fileItem.textContent = `📄 ${escapeHtml(file.name)} (${formatFileSize(file.size)})`;
+                    fileItem.textContent = `📄 ${file.name} (${formatFileSize(file.size)})`;
                     fileList.appendChild(fileItem);
                 });
             

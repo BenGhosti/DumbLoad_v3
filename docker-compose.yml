@@ -10,8 +10,8 @@
         volumes:
             # Appdata: persistent app config (passkeys etc.) - classic Unraid appdata folder
             - ${APP_DATA_PATH:-/mnt/user/appdata/dumbload}:/app/config
-            # Uploaded/download files - own share, reachable over the network
-            - ${FILES_PATH:-/mnt/user/dumbload-files}:/app/uploads
+            # Uploaded/download files - folder inside appdata
+            - ${FILES_PATH:-/mnt/user/appdata/dumbload-files}:/app/uploads
         env_file:
             - .env
         environment:

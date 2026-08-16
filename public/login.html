@@ -17,35 +17,59 @@
             padding: 1rem;
         }
 
-        .pin-header {
-            text-align: center;
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+
+        .login-brand {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
             margin-bottom: 2rem;
+            text-align: center;
         }
 
-        .pin-header h1 {
-            margin-bottom: 0.5rem;
+        .login-brand .brand-logo {
+            width: 52px;
+            height: 52px;
+            color: var(--primary-color);
+            margin-bottom: 0.4rem;
         }
 
-        .pin-header h2 {
+        .login-brand h1 {
+            margin: 0;
+            padding: 0;
+            font-size: 2rem;
+        }
+
+        .login-brand h2 {
             font-weight: 500;
-            opacity: 0.9;
+            opacity: 0.85;
+            font-size: 1.15rem;
         }
 
         #pin-form {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.5rem;
+            gap: 0.6rem;
             justify-content: center;
             max-width: 100%;
-            padding: 2rem 1rem;
+            padding: 1rem;
         }
 
         .error-message {
             text-align: center;
             margin-top: 1rem;
             color: var(--danger-color);
-            max-width: 300px;
-            line-height: 1.4;
+            max-width: 320px;
+            line-height: 1.45;
+            min-height: 1.4em;
+        }
+        .error-message.success {
+            color: #4CAF50;
         }
 
         .pin-digit.locked {
@@ -73,57 +97,111 @@
             border-top: 1px solid var(--border-color);
         }
 
-        .passkey-btn {
+        .passkey-wrap {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
+            width: 100%;
+            max-width: 340px;
+        }
+
+        .passkey-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
             background: var(--primary-color);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 13px 28px;
+            border-radius: 10px;
             font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+            animation: key-glow 2.4s ease-in-out infinite;
         }
-        .passkey-btn:hover {
+        .passkey-btn:hover:not(:disabled) {
             background: var(--highlight-hover);
+            transform: translateY(-2px);
+            animation: none;
+            box-shadow: 0 6px 18px rgba(33, 150, 243, 0.35);
+        }
+        .passkey-btn:active:not(:disabled) {
+            transform: translateY(0) scale(0.97);
         }
         .passkey-btn:disabled {
             background: var(--border-color);
             cursor: not-allowed;
+            animation: none;
+        }
+        .passkey-btn #passkey-icon {
+            transition: transform 0.2s ease;
+        }
+        .passkey-btn:hover:not(:disabled) #passkey-icon {
+            transform: rotate(-10deg) scale(1.08);
+        }
+
+        .passkey-note {
+            font-size: 0.8rem;
+            opacity: 0.75;
+            text-align: center;
+            line-height: 1.4;
+            max-width: 300px;
+        }
+        .passkey-note.warning {
+            color: var(--danger-color);
+            opacity: 1;
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.35);
+            border-radius: 8px;
+            padding: 0.6rem 0.9rem;
         }
 
         /* --- Animations --- */
 
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .login-brand, #pin-section, #passkey-section {
+            animation: fade-in-up 0.45s ease-out both;
+        }
+        #pin-section { animation-delay: 0.08s; }
+        #passkey-section { animation-delay: 0.16s; }
+
         @keyframes pin-pop {
-            0% { transform: scale(0.8); }
-            60% { transform: scale(1.12); }
+            0% { transform: scale(0.7); }
+            55% { transform: scale(1.18); }
+            80% { transform: scale(0.95); }
             100% { transform: scale(1); }
         }
         .pin-digit.filled {
-            animation: pin-pop 0.16s ease-out;
+            animation: pin-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes pin-success {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.25); background-color: #4CAF50; border-color: #4CAF50; box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.25); }
+            100% { transform: scale(1); background-color: #4CAF50; border-color: #4CAF50; }
+        }
+        .pin-digit.success {
+            animation: pin-success 0.4s ease-out forwards;
         }
 
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
-            20%, 60% { transform: translateX(-7px); }
-            40%, 80% { transform: translateX(7px); }
+            15%, 55% { transform: translateX(-8px); }
+            35%, 75% { transform: translateX(8px); }
         }
         .shake {
-            animation: shake 0.4s ease-in-out;
+            animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97);
         }
 
         @keyframes key-glow {
             0%, 100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.45); }
-            50% { box-shadow: 0 0 0 9px rgba(33, 150, 243, 0); }
-        }
-        .passkey-btn {
-            animation: key-glow 2.4s ease-in-out infinite;
-        }
-        .passkey-btn:hover,
-        .passkey-btn:disabled {
-            animation: none;
+            50% { box-shadow: 0 0 0 10px rgba(33, 150, 243, 0); }
         }
 
         @keyframes spin {
@@ -142,26 +220,53 @@
 </head>
 <body>
     <div class="login-container">
-        <div class="pin-header">
+        <button class="theme-toggle" onclick="toggleLoginTheme()" aria-label="Toggle dark mode">
+            <svg xmlns="http://www.w3.org/2000/svg" class="theme-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path class="moon" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                <circle class="sun" cx="12" cy="12" r="5" style="display:none"/>
+                <line class="sun" x1="12" y1="1" x2="12" y2="3" style="display:none"/>
+                <line class="sun" x1="12" y1="21" x2="12" y2="23" style="display:none"/>
+                <line class="sun" x1="4.22" y1="4.22" x2="5.64" y2="5.64" style="display:none"/>
+                <line class="sun" x1="18.36" y1="18.36" x2="19.78" y2="19.78" style="display:none"/>
+                <line class="sun" x1="1" y1="12" x2="3" y2="12" style="display:none"/>
+                <line class="sun" x1="21" y1="12" x2="23" y2="12" style="display:none"/>
+                <line class="sun" x1="4.22" y1="19.78" x2="5.64" y2="18.36" style="display:none"/>
+                <line class="sun" x1="18.36" y1="5.64" x2="19.78" y2="4.22" style="display:none"/>
+            </svg>
+        </button>
+
+        <div class="login-brand">
+            <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
             <h1>{{SITE_TITLE}}</h1>
             <h2 id="login-subtitle">Login</h2>
         </div>
+
         <div id="pin-section" style="display: none;">
             <form id="pin-form">
                 <!-- PIN inputs will be dynamically added here -->
             </form>
         </div>
+
         <div id="passkey-section" style="display: none;">
             <div class="divider">or</div>
-            <button id="passkey-btn" class="passkey-btn" type="button">
-                <svg id="passkey-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                </svg>
-                <span class="passkey-spinner" id="passkey-spinner" style="display:none"></span>
-                <span id="passkey-label">Login with Passkey</span>
-            </button>
+            <div class="passkey-wrap">
+                <button id="passkey-btn" class="passkey-btn" type="button">
+                    <svg id="passkey-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>
+                    </svg>
+                    <span class="passkey-spinner" id="passkey-spinner" style="display:none"></span>
+                    <span id="passkey-label">Login with Passkey</span>
+                </button>
+                <p id="passkey-note" class="passkey-note" style="display:none"></p>
+            </div>
         </div>
+
         <p id="pin-error" class="error-message"></p>
     </div>
 
@@ -170,8 +275,42 @@
         const savedTheme = localStorage.getItem('theme') || 
             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.setAttribute('data-theme', savedTheme);
+        applyThemeIcon(savedTheme);
+
+        function toggleLoginTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            applyThemeIcon(next);
+        }
+
+        function applyThemeIcon(theme) {
+            const moonPaths = document.querySelectorAll('.moon');
+            const sunPaths = document.querySelectorAll('.sun');
+            if (theme === 'dark') {
+                moonPaths.forEach(path => path.style.display = 'none');
+                sunPaths.forEach(path => path.style.display = '');
+            } else {
+                moonPaths.forEach(path => path.style.display = '');
+                sunPaths.forEach(path => path.style.display = 'none');
+            }
+        }
+
+        // Passkeys need a secure context (HTTPS or localhost) - browsers
+        // do not expose the WebAuthn API over plain http://ip:port
+        const canUseWebAuthn = window.isSecureContext === true &&
+            typeof navigator.credentials === 'object' &&
+            typeof navigator.credentials.get === 'function' &&
+            typeof navigator.credentials.create === 'function';
 
         let pinLength = 4;  // Default length, will be updated from server
+
+        const setError = (text, isSuccess = false) => {
+            const el = document.getElementById('pin-error');
+            el.textContent = text || '';
+            el.className = 'error-message' + (isSuccess ? ' success' : '');
+        };
 
         // Create PIN input boxes
         const createPinInputs = (length) => {
@@ -222,6 +361,13 @@
 
         // Handle form submission
         const verifyPin = async (pin) => {
+            const inputs = [...document.querySelectorAll('.pin-digit')];
+            const allFilled = pin.length === inputs.length;
+            if (!allFilled) return;
+
+            setError('');
+            inputs.forEach(input => { input.disabled = true; });
+
             try {
                 const response = await fetch('/api/auth/verify-pin', {
                     method: 'POST',
@@ -232,13 +378,18 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    window.location.href = '/';
+                    // Success animation, then redirect
+                    inputs.forEach(input => {
+                        input.classList.remove('filled');
+                        input.classList.add('success');
+                    });
+                    setError('Login successful', true);
+                    setTimeout(() => { window.location.href = '/'; }, 350);
                 } else {
-                    document.getElementById('pin-error').textContent = data.error || 'Authentication failed';
+                    setError(data.error || 'Authentication failed');
                     
                     const isLockedOut = data.error && data.error.includes('Too many PIN verification attempts');
                     
-                    const inputs = [...document.querySelectorAll('.pin-digit')];
                     if (isLockedOut) {
                         inputs.forEach(input => {
                             input.disabled = true;
@@ -252,6 +403,7 @@
                         form.classList.add('shake');
 
                         inputs.forEach(input => {
+                            input.disabled = false;
                             input.value = '';
                             input.classList.remove('filled');
                         });
@@ -260,7 +412,8 @@
                 }
             } catch (err) {
                 console.error('Error verifying PIN:', err);
-                document.getElementById('pin-error').textContent = 'Error verifying PIN';
+                setError('Error verifying PIN');
+                inputs.forEach(input => { input.disabled = false; });
             }
         };
 
@@ -331,7 +484,7 @@
                 });
                 const optionsData = await optionsResponse.json();
                 if (!optionsData.challengeId) {
-                    throw new Error('Failed to get authentication options');
+                    throw new Error(optionsData.error || 'Failed to get authentication options');
                 }
 
                 // 2. Request credential from authenticator
@@ -352,13 +505,16 @@
                 const verifyData = await verifyResponse.json();
 
                 if (verifyData.success) {
-                    window.location.href = '/';
+                    label.textContent = 'Success!';
+                    setTimeout(() => { window.location.href = '/'; }, 250);
                 } else {
                     errorEl.textContent = verifyData.error || 'Passkey authentication failed';
                 }
             } catch (err) {
                 if (err.name === 'NotAllowedError') {
                     errorEl.textContent = 'Passkey authentication cancelled';
+                } else if (err.name === 'SecurityError') {
+                    errorEl.textContent = 'Passkey error: browsers only allow passkeys over HTTPS or localhost.';
                 } else {
                     console.error('Passkey login error:', err);
                     errorEl.textContent = 'Passkey authentication failed: ' + (err.message || err);
@@ -386,10 +542,10 @@
                     return;
                 }
 
-                const showPin = data.authMode === 'pin' || data.authMode === 'both';
-                const showPasskey = (data.authMode === 'passkey' || data.authMode === 'both') && data.hasPasskeys;
+                const showPin = (data.authMode === 'pin' || data.authMode === 'both') && data.pinRequired;
+                const showPasskey = data.authMode === 'passkey' || data.authMode === 'both';
 
-                if (showPin && data.pinRequired) {
+                if (showPin) {
                     document.getElementById('pin-section').style.display = 'block';
                     document.getElementById('login-subtitle').textContent = 'Enter PIN';
                     pinLength = data.pinLength;
@@ -398,17 +554,35 @@
                 }
 
                 if (showPasskey) {
-                    document.getElementById('passkey-section').style.display = 'block';
-                    document.getElementById('passkey-btn').addEventListener('click', loginWithPasskey);
+                    const section = document.getElementById('passkey-section');
+                    const btn = document.getElementById('passkey-btn');
+                    const note = document.getElementById('passkey-note');
+                    section.style.display = 'block';
+
+                    if (!data.hasPasskeys) {
+                        // Passkey login is offered but no passkeys exist yet
+                        btn.style.display = 'none';
+                        note.style.display = 'block';
+                        note.textContent = 'No passkeys registered yet. Register one first or use PIN login.';
+                    } else if (!canUseWebAuthn) {
+                        // Browser blocks WebAuthn in insecure contexts
+                        btn.disabled = true;
+                        note.style.display = 'block';
+                        note.className = 'passkey-note warning';
+                        note.textContent = 'Passkeys require HTTPS or localhost. This connection is not secure, so passkey login is unavailable here.';
+                    } else {
+                        btn.addEventListener('click', loginWithPasskey);
+                    }
+
                     // Hide the "or" divider if only passkey is shown
-                    if (!showPin || !data.pinRequired) {
+                    if (!showPin) {
                         document.querySelector('.divider').style.display = 'none';
                         document.getElementById('login-subtitle').textContent = 'Login with Passkey';
                     }
                 }
 
                 // Fallback: if neither PIN nor passkey is available but auth is required
-                if ((!showPin || !data.pinRequired) && !showPasskey) {
+                if (!showPin && !showPasskey) {
                     document.getElementById('pin-error').textContent = 'No authentication method available. Please contact the administrator.';
                 }
             })

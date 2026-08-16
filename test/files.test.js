@@ -5,6 +5,8 @@
 
 // Disable batch cleanup for tests
 process.env.DISABLE_BATCH_CLEANUP = 'true';
+// Enable file listing for the listing tests
+process.env.SHOW_FILE_LIST = 'true';
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');

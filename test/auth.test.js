@@ -10,17 +10,17 @@ const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 
-// Import the app
+const originalPin = process.env.DUMBLOAD_PIN;
+
+// Import the app - the config module reads DUMBLOAD_PIN at load time,
+// so the PIN must be set BEFORE requiring the app
+process.env.DUMBLOAD_PIN = '1234';
 const { app, initialize } = require('../src/app');
 
 let server;
 let baseUrl;
-const originalPin = process.env.DUMBLOAD_PIN;
 
 before(async () => {
-  // Set PIN for testing
-  process.env.DUMBLOAD_PIN = '1234';
-  
   // Initialize app
   await initialize();
   

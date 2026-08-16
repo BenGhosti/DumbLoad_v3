@@ -43,17 +43,57 @@ function createSafeContentDisposition(filename) {
 }
 
 /**
+ * Validate a requested path inside the upload directory.
+ * Missing files return 404 ("not found"), paths escaping the upload
+ * directory (path traversal/symlink escape) return 403 ("access denied").
+ * @param {string} itemPath - Absolute path to validate
+ * @returns {Promise<number|null>} HTTP status to reject with, or null if valid
+ */
+async function validateRequestedPath(itemPath) {
+  // 1. Lexical containment check - rejects path traversal (../) immediately,
+  //    even for paths that do not exist
+  if (!isPathWithinUploadDir(itemPath, config.uploadDir, false)) {
+    return 403;
+  }
+
+  // 2. Existence check - missing files are "not found"
+  let exists = false;
+  try {
+    await fs.access(itemPath);
+    exists = true;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      logger.error(`Failed to access path ${itemPath}: ${err.message}`);
+      return 500;
+    }
+  }
+
+  if (!exists) {
+    return 404;
+  }
+
+  // 3. Symlink escape check (resolves the real path of existing files)
+  if (!isPathWithinUploadDir(itemPath, config.uploadDir, true)) {
+    return 403;
+  }
+
+  return null;
+}
+
+/**
  * Get file information
  */
 router.get('/info/*', async (req, res) => {
   const filePath = path.join(config.uploadDir, req.params[0]);
   
   try {
-    // Ensure the path is within the upload directory (security check)
-    // Use requireExists=true since we're getting info on an existing file
-    if (!isPathWithinUploadDir(filePath, config.uploadDir, true)) {
+    const rejectStatus = await validateRequestedPath(filePath);
+    if (rejectStatus === 403) {
       logger.warn(`Attempted path traversal attack: ${req.params[0]}`);
       return res.status(403).json({ error: 'Access denied' });
+    }
+    if (rejectStatus) {
+      return res.status(rejectStatus).json({ error: 'File not found' });
     }
     
     const stats = await fs.stat(filePath);
@@ -82,16 +122,15 @@ router.get('/download/*', async (req, res) => {
   const fileName = path.basename(req.params[0]);
   
   try {
-    // Ensure the file is within the upload directory (security check)
-    // This must be done BEFORE any filesystem operations to prevent path traversal
-    // Use requireExists=true since we're downloading an existing file
-    if (!isPathWithinUploadDir(filePath, config.uploadDir, true)) {
+    const rejectStatus = await validateRequestedPath(filePath);
+    if (rejectStatus === 403) {
       logger.warn(`Attempted path traversal attack: ${req.params[0]}`);
       return res.status(403).json({ error: 'Access denied' });
     }
+    if (rejectStatus) {
+      return res.status(rejectStatus).json({ error: 'File not found' });
+    }
 
-    await fs.access(filePath);
-    
     // Set headers for download with safe Content-Disposition
     res.setHeader('Content-Disposition', createSafeContentDisposition(fileName));
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -243,14 +282,15 @@ router.delete('/*', async (req, res) => {
   const itemPath = path.join(config.uploadDir, req.params[0]);
   
   try {
-    // Ensure the path is within the upload directory (security check)
-    // Use requireExists=true since we're deleting an existing file
-    if (!isPathWithinUploadDir(itemPath, config.uploadDir, true)) {
+    const rejectStatus = await validateRequestedPath(itemPath);
+    if (rejectStatus === 403) {
       logger.warn(`Attempted path traversal attack: ${req.params[0]}`);
       return res.status(403).json({ error: 'Access denied' });
     }
+    if (rejectStatus) {
+      return res.status(rejectStatus).json({ error: 'File or directory not found' });
+    }
     
-    await fs.access(itemPath);
     const stats = await fs.stat(itemPath);
     
     if (stats.isDirectory()) {
@@ -287,15 +327,16 @@ router.put('/rename/*', async (req, res) => {
   const currentDir = path.dirname(currentPath);
   
   try {
-    // Ensure the current path is within the upload directory (security check)
-    // Use requireExists=true since we're renaming an existing file
-    if (!isPathWithinUploadDir(currentPath, config.uploadDir, true)) {
+    const rejectStatus = await validateRequestedPath(currentPath);
+    if (rejectStatus === 403) {
       logger.warn(`Attempted path traversal attack: ${req.params[0]}`);
       return res.status(403).json({ error: 'Access denied' });
     }
+    if (rejectStatus) {
+      return res.status(rejectStatus).json({ error: 'File or directory not found' });
+    }
     
     // Check if the current file/directory exists
-    await fs.access(currentPath);
     const stats = await fs.stat(currentPath);
     
     // Sanitize the new name using our safe sanitization function

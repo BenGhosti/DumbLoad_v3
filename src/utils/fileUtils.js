@@ -173,9 +173,10 @@ function sanitizeFilenameSafe(fileName) {
     .replace(/[^\x00-\x7F]/g, ''); // Remove non-ASCII characters
 
   // Step 2: Replace spaces and common separators with underscores
+  // (hyphens are safe in filenames and are preserved)
   baseName = baseName
     .replace(/\s+/g, '_') // Replace all whitespace with underscores
-    .replace(/[+\-\s]+/g, '_'); // Replace + and - with underscores
+    .replace(/\+/g, '_'); // Replace + with underscores
 
   // Step 3: Remove or replace problematic characters
   baseName = baseName
@@ -345,11 +346,18 @@ function isPathWithinUploadDir(filePath, uploadDir, requireExists = false) {
       return false;
     }
     
-    // Additional check: On Windows, ensure we're on the same drive
+    // Additional check: On Windows, ensure both paths are on the same drive.
+    // Handles drive letters (C:) and UNC shares (\\server\share).
+    // Only compares when BOTH paths have a detectable drive/share - otherwise
+    // the path.relative() check above is authoritative.
     if (process.platform === 'win32') {
-      const fileDrive = resolvedFilePath.split(':')[0];
-      const uploadDrive = realUploadDir.split(':')[0];
-      if (fileDrive !== uploadDrive) {
+      const getDrive = (p) => {
+        const match = p.match(/^([a-zA-Z]:|\\\\[^\\]+\\[^\\]+)/);
+        return match ? match[1].toLowerCase() : null;
+      };
+      const fileDrive = getDrive(resolvedFilePath);
+      const uploadDrive = getDrive(realUploadDir);
+      if (fileDrive && uploadDrive && fileDrive !== uploadDrive) {
         return false;
       }
     }

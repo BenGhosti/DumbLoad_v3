@@ -17,14 +17,13 @@ const fs = require('fs'); // Get version from package.json
  * AUTO_UPLOAD         - Enable auto-upload (true/false, default: false)
  * SHOW_FILE_LIST      - Enable file listing in frontend (true/false, default: false)
  * DUMBLOAD_PIN        - Security PIN for uploads (required for protected endpoints)
- * DUMBLOAD_TITLE      - Site title (default: 'DumbLoad')
  * APPRISE_URL         - Apprise notification URL (optional)
  * APPRISE_MESSAGE     - Notification message template (default provided)
  * APPRISE_SIZE_UNIT   - Size unit for notifications (optional)
  * ALLOWED_EXTENSIONS  - Comma-separated list of allowed file extensions (optional)
  * DUMBLOAD_AUTH_MODE  - Authentication mode: 'pin', 'passkey', or 'both' (default: 'pin')
  * DUMBLOAD_RP_ID      - WebAuthn Relying Party ID (default: hostname from BASE_URL)
- * DUMBLOAD_ADMIN_PATH - Secret admin path for passkey management (default: '/admin/passkeys')
+ * DUMBLOAD_ADMIN_PATH - Secret admin path for passkey management (empty = disabled)
  */
 
 // Helper for clear configuration logging
@@ -37,7 +36,9 @@ const logConfig = (message, level = 'info') => {
 const DEFAULT_SITE_TITLE = 'DumbLoad';
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+// Normalize the base URL (always with trailing slash) BEFORE the config object is frozen
+const rawBaseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+const BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl : rawBaseUrl + '/';
 const DEFAULT_CLIENT_MAX_RETRIES = 5; // Default retry count
 console.log('Loaded ENV:', {
   PORT,
@@ -196,10 +197,9 @@ const config = {
   // UI settings
   // =====================
   /**
-   * Site title (default: 'DumbLoad')
-   * Set via DUMBLOAD_TITLE in .env
+   * Site title - fixed to "DumbLoad" for a clean, consistent UI
    */
-  siteTitle: process.env.DUMBLOAD_TITLE || DEFAULT_SITE_TITLE,
+  siteTitle: DEFAULT_SITE_TITLE,
   
   // =====================
   // =====================
@@ -281,9 +281,9 @@ const config = {
     }
   })(),
   /**
-   * WebAuthn Relying Party name (default: site title)
+   * WebAuthn Relying Party name
    */
-  rpName: process.env.DUMBLOAD_RP_NAME || process.env.DUMBLOAD_TITLE || DEFAULT_SITE_TITLE,
+  rpName: process.env.DUMBLOAD_RP_NAME || DEFAULT_SITE_TITLE,
   /**
    * WebAuthn Relying Party origin (default: BASE_URL origin)
    */
@@ -295,10 +295,15 @@ const config = {
     }
   })(),
   /**
-   * Secret admin path for passkey management
-   * Set via DUMBLOAD_ADMIN_PATH in .env
+   * Secret admin path for passkey management.
+   * Empty/unset = admin DISABLED: no passkey can be registered or removed.
+   * Set via DUMBLOAD_ADMIN_PATH in .env (e.g. /admin/passkeys)
    */
-  adminPath: process.env.DUMBLOAD_ADMIN_PATH || '/admin/passkeys',
+  adminPath: (process.env.DUMBLOAD_ADMIN_PATH || '').trim(),
+  /**
+   * Whether the passkey management admin page is enabled
+   */
+  adminEnabled: Boolean((process.env.DUMBLOAD_ADMIN_PATH || '').trim()),
   /**
    * Directory for persistent app configuration (passkeys etc.)
    * Priority: DUMBLOAD_CONFIG_DIR > upload directory (backward compatible)
@@ -320,17 +325,31 @@ function validateConfig() {
     errors.push('MAX_FILE_SIZE must be greater than 0');
   }
 
-  // Validate BASE_URL format
+  // Validate BASE_URL format (trailing slash is already normalized before freeze)
   try {
-    // Ensure BASE_URL ends with a slash
-    if (!config.baseUrl.endsWith('/')) {
-      logger.warn('BASE_URL did not end with a trailing slash. Automatically appending "/".');
-      config.baseUrl = config.baseUrl + '/';
-    }
+    new URL(config.baseUrl);
   } catch (err) {
     const errorMsg = `BASE_URL must be a valid URL: ${err.message || err}`;
     logger.error(errorMsg);
     errors.push(errorMsg);
+  }
+
+  // Warn when the WebAuthn RP ID is an IP address or not browser-friendly.
+  // Browsers only allow passkeys over HTTPS with a hostname (or on localhost).
+  const rpId = config.rpId;
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(rpId) || rpId.includes(':');
+  if (config.authMode !== 'pin' && isIp && rpId !== 'localhost') {
+    logger.warn(
+      `WebAuthn RP ID "${rpId}" is an IP address. Browsers only allow passkeys on "localhost" ` +
+      'or over HTTPS with a domain name. Passkey registration/login will likely fail ' +
+      'until you access DumbLoad via a hostname (e.g. reverse proxy with HTTPS).'
+    );
+  }
+
+  if (config.adminEnabled) {
+    logger.info(`Passkey management enabled at: ${config.adminPath}`);
+  } else {
+    logger.info('Passkey management disabled (DUMBLOAD_ADMIN_PATH not set)');
   }
   
   if (config.nodeEnv === 'production') {

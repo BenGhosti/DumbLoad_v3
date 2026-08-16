@@ -66,7 +66,6 @@ app.use((req, res, next) => {
     '/api/passkey/auth-verify',
     '/pin-length',
     '/verify-pin',
-    '/config.js',
     '/assets/',
     '/styles.css',
     '/manifest.json',
@@ -141,23 +140,44 @@ app.get('/login.html', (req, res) => {
 });
 
 // Secret admin route for passkey management (requires authentication)
-app.get(config.adminPath, requireAuth(), (req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  
-  let html = fs.readFileSync(path.join(__dirname, '../public', 'admin.html'), 'utf8');
-  html = html.replace(/{{SITE_TITLE}}/g, config.siteTitle);
-  html = html.replace('{{ADMIN_PATH}}', config.adminPath);
-  html = html.replace('{{RP_ID}}', config.rpId);
-  html = injectDemoBanner(html);
-  res.send(html);
-});
+// Only registered when DUMBLOAD_ADMIN_PATH is set in the environment.
+// Without it the admin interface does not exist and management API endpoints
+// return 404 (see src/routes/passkey.js).
+if (config.adminPath && config.adminEnabled) {
+  app.get(config.adminPath, requireAuth(), (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    
+    let html = fs.readFileSync(path.join(__dirname, '../public', 'admin.html'), 'utf8');
+    html = html.replace(/{{SITE_TITLE}}/g, config.siteTitle);
+    html = html.replace('{{ADMIN_PATH}}', config.adminPath);
+    html = html.replace('{{RP_ID}}', config.rpId);
+    html = injectDemoBanner(html);
+    res.send(html);
+  });
+}
 
 // Serve static files with template variable replacement for HTML files
 app.use((req, res, next) => {
   if (!req.path.endsWith('.html')) {
     return next();
+  }
+
+  // The admin page is only served through the secret admin path -
+  // never directly (this would expose the management UI location logic).
+  if (req.path === '/admin.html' || req.path === 'admin.html') {
+    return res.status(404).send('Not found');
+  }
+
+  // index.html must respect authentication just like the "/" route
+  if (req.path === '/index.html' || req.path === 'index.html') {
+    const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+    const hasValidPinCookie = config.authMode !== 'passkey' &&
+      req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
+    if (isAuthRequired() && !hasValidSession && !hasValidPinCookie) {
+      return res.redirect('/login.html');
+    }
   }
   
   try {

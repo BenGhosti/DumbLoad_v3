@@ -73,6 +73,8 @@ function originValidationMiddleware(req, res, next) {
 function getCorsOptions(baseUrl) {
   const allowedOrigins = setupOrigins(baseUrl);
   const corsOptions = {
+    // Note: auth cookies are sameSite=strict, so cross-origin credentialed
+    // requests cannot carry a session regardless of the ACAO header.
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
