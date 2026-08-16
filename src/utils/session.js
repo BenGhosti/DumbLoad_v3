@@ -6,8 +6,17 @@
 
 const crypto = require('crypto');
 const logger = require('./logger');
+const { config } = require('../config');
 
-const SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours
+const DEFAULT_SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours
+
+// In-memory TTL. For "instant" sessions (sessionTimeoutMs === 0) we still keep a
+// generous in-memory lifetime - persistence is governed by the browser cookie.
+const SESSION_TTL = config.sessionTimeoutMs > 0 ? config.sessionTimeoutMs : DEFAULT_SESSION_DURATION;
+
+// Cookie maxAge in ms, or null for "instant" (a session cookie without maxAge,
+// which the browser clears on close).
+const SESSION_COOKIE_MAX_AGE = config.sessionTimeoutMs > 0 ? config.sessionTimeoutMs : null;
 
 const sessions = new Map(); // token -> { createdAt, expiresAt, ip }
 
@@ -21,11 +30,32 @@ function createSession(ip) {
   const now = Date.now();
   sessions.set(token, {
     createdAt: now,
-    expiresAt: now + SESSION_DURATION,
+    expiresAt: now + SESSION_TTL,
     ip: ip || 'unknown'
   });
   logger.info(`Session created for IP ${ip || 'unknown'}`);
   return token;
+}
+
+/**
+ * Build the secure cookie options for the session cookie.
+ * Respects SESSION_TIMEOUT ("instant" => session cookie without maxAge).
+ * @param {object} req - Express request object
+ * @returns {object} Cookie options
+ */
+function getSessionCookieOptions(req) {
+  const baseUrl = process.env.BASE_URL || '';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const options = {
+    httpOnly: true,
+    secure: req.secure || (baseUrl.startsWith('https') && isProduction),
+    sameSite: 'strict',
+    path: '/'
+  };
+  if (SESSION_COOKIE_MAX_AGE) {
+    options.maxAge = SESSION_COOKIE_MAX_AGE;
+  }
+  return options;
 }
 
 /**
@@ -86,5 +116,6 @@ module.exports = {
   isValidSession,
   destroySession,
   getActiveSessionCount,
-  SESSION_DURATION
+  getSessionCookieOptions,
+  SESSION_DURATION: SESSION_TTL
 };

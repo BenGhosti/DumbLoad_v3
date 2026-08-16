@@ -11,29 +11,12 @@ const {
   MAX_ATTEMPTS,
   LOCKOUT_DURATION 
 } = require('../utils/security');
-const { createSession, destroySession, SESSION_DURATION } = require('../utils/session');
+const { createSession, destroySession, getSessionCookieOptions } = require('../utils/session');
 const { getClientIp } = require('../utils/ipExtractor');
 const { isAuthRequired } = require('../middleware/security');
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'production';
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
 
-/**
- * Build secure cookie options for the session cookie
- * @param {object} req - Express request object
- * @returns {object} Cookie options
- */
-function getSessionCookieOptions(req) {
-  return {
-    httpOnly: true,
-    secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-    sameSite: 'strict',
-    path: '/',
-    maxAge: SESSION_DURATION
-  };
-}
 /**
  * Verify PIN
  */

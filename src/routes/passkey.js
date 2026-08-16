@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { config } = require('../config');
 const logger = require('../utils/logger');
-const { createSession, SESSION_DURATION } = require('../utils/session');
+const { createSession, getSessionCookieOptions } = require('../utils/session');
 const { getClientIp } = require('../utils/ipExtractor');
 const { requireAuth } = require('../middleware/security');
 const {
@@ -18,10 +18,23 @@ const {
 } = require('../services/passkey');
 const passkeyStore = require('../services/passkeyStore');
 
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'production';
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
+
+/**
+ * Derive the WebAuthn Relying Party context from the incoming request.
+ * Using the request's own host fixes "rp.id cannot be used with the current
+ * origin" errors that happen when BASE_URL differs from how the user actually
+ * accesses the app (different hostname/IP/port). DUMBLOAD_RP_ID still acts as
+ * an explicit override.
+ * @param {object} req - Express request object
+ * @returns {{rpId: string, rpOrigin: string}}
+ */
+function getRpContext(req) {
+  const explicitRpId = (process.env.DUMBLOAD_RP_ID || '').trim();
+  const rpId = explicitRpId || req.hostname || config.rpId || 'localhost';
+  const rpOrigin = `${req.protocol}://${req.get('host')}`;
+  return { rpId, rpOrigin };
+}
 
 /**
  * Middleware that blocks ALL passkey management endpoints when the admin
@@ -45,7 +58,7 @@ router.post('/auth-options', async (req, res) => {
   }
 
   try {
-    const { challengeId, options } = await generatePasskeyAuthOptions();
+    const { challengeId, options } = await generatePasskeyAuthOptions(getRpContext(req));
     res.json({ challengeId, options });
   } catch (err) {
     logger.error(`Failed to generate auth options: ${err.message}`);
@@ -70,21 +83,15 @@ router.post('/auth-verify', async (req, res) => {
   }
 
   try {
-    const result = await verifyPasskeyAuthentication(challengeId, response);
+    const result = await verifyPasskeyAuthentication(challengeId, response, getRpContext(req));
     if (!result.verified) {
       logger.warn(`Failed passkey authentication from IP: ${ip}`);
       return res.status(401).json({ success: false, error: result.error || 'Authentication failed' });
     }
 
-    // Create session token (8h expiry)
+    // Create session token
     const sessionToken = createSession(ip);
-    res.cookie(SESSION_COOKIE_NAME, sessionToken, {
-      httpOnly: true,
-      secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-      sameSite: 'strict',
-      path: '/',
-      maxAge: SESSION_DURATION
-    });
+    res.cookie(SESSION_COOKIE_NAME, sessionToken, getSessionCookieOptions(req));
 
     logger.info(`Successful passkey authentication from IP: ${ip} (${result.name})`);
     res.json({ success: true, error: null });
@@ -104,7 +111,7 @@ router.post('/register-options', requireAdminEnabled, requireAuth(), async (req,
   }
 
   try {
-    const { challengeId, options } = await generatePasskeyRegistrationOptions(name.trim());
+    const { challengeId, options } = await generatePasskeyRegistrationOptions(name.trim(), getRpContext(req));
     res.json({ challengeId, options });
   } catch (err) {
     logger.error(`Failed to generate registration options: ${err.message}`);
@@ -125,7 +132,7 @@ router.post('/register-verify', requireAdminEnabled, requireAuth(), async (req, 
   const safeName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 50) : 'Unbenannter Schlüssel';
 
   try {
-    const result = await verifyPasskeyRegistration(challengeId, response, safeName);
+    const result = await verifyPasskeyRegistration(challengeId, response, safeName, getRpContext(req));
     if (!result.verified) {
       return res.status(400).json({ error: result.error || 'Registration failed' });
     }

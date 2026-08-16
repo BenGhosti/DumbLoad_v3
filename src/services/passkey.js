@@ -67,7 +67,7 @@ const STABLE_USER_ID = new TextEncoder().encode('dumbload-admin-user');
  * @param {string} passkeyName - User-friendly name for the passkey
  * @returns {Promise<Object>} { challengeId, options }
  */
-async function generatePasskeyRegistrationOptions(passkeyName) {
+async function generatePasskeyRegistrationOptions(passkeyName, context = {}) {
   const existingKeys = await passkeyStore.getAllPasskeys();
   const excludeCredentials = existingKeys.map(key => ({
     id: key.id,
@@ -77,7 +77,7 @@ async function generatePasskeyRegistrationOptions(passkeyName) {
 
   const options = await generateRegistrationOptions({
     rpName: config.rpName,
-    rpID: config.rpId,
+    rpID: context.rpId || config.rpId,
     userName: 'dumbload-admin',
     userID: STABLE_USER_ID,
     userDisplayName: passkeyName,
@@ -100,7 +100,7 @@ async function generatePasskeyRegistrationOptions(passkeyName) {
  * @param {string} passkeyName - User-friendly name for the passkey
  * @returns {Promise<Object>} { verified, error?, name? }
  */
-async function verifyPasskeyRegistration(challengeId, response, passkeyName) {
+async function verifyPasskeyRegistration(challengeId, response, passkeyName, context = {}) {
   const expectedChallenge = consumeChallenge(challengeId, 'registration');
   if (!expectedChallenge) {
     return { verified: false, error: 'Registration challenge expired or invalid. Please try again.' };
@@ -110,8 +110,8 @@ async function verifyPasskeyRegistration(challengeId, response, passkeyName) {
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: config.rpOrigin,
-      expectedRPID: config.rpId,
+      expectedOrigin: context.rpOrigin || config.rpOrigin,
+      expectedRPID: context.rpId || config.rpId,
       requireUserVerification: false
     });
 
@@ -144,7 +144,7 @@ async function verifyPasskeyRegistration(challengeId, response, passkeyName) {
  * Generate authentication options for passkey login
  * @returns {Promise<Object>} { challengeId, options }
  */
-async function generatePasskeyAuthOptions() {
+async function generatePasskeyAuthOptions(context = {}) {
   // Include registered credentials so non-discoverable hardware keys (e.g. basic YubiKey U2F)
   // can also be used, in addition to discoverable passkeys.
   const existingKeys = await passkeyStore.getAllPasskeys();
@@ -155,7 +155,7 @@ async function generatePasskeyAuthOptions() {
   }));
 
   const options = await generateAuthenticationOptions({
-    rpID: config.rpId,
+    rpID: context.rpId || config.rpId,
     allowCredentials,
     userVerification: 'preferred'
   });
@@ -170,7 +170,7 @@ async function generatePasskeyAuthOptions() {
  * @param {Object} response - Authentication response JSON from browser
  * @returns {Promise<Object>} { verified, error?, name? }
  */
-async function verifyPasskeyAuthentication(challengeId, response) {
+async function verifyPasskeyAuthentication(challengeId, response, context = {}) {
   const expectedChallenge = consumeChallenge(challengeId, 'authentication');
   if (!expectedChallenge) {
     return { verified: false, error: 'Authentication challenge expired or invalid. Please try again.' };
@@ -197,8 +197,8 @@ async function verifyPasskeyAuthentication(challengeId, response) {
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: config.rpOrigin,
-      expectedRPID: config.rpId,
+      expectedOrigin: context.rpOrigin || config.rpOrigin,
+      expectedRPID: context.rpId || config.rpId,
       credential,
       requireUserVerification: false
     });

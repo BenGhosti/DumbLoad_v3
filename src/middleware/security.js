@@ -5,13 +5,10 @@
  */
 
 const { safeCompare } = require('../utils/security');
-const { isValidSession, createSession, SESSION_DURATION } = require('../utils/session');
+const { isValidSession, createSession, getSessionCookieOptions } = require('../utils/session');
 const { config } = require('../config');
 const { hasPasskeysSync } = require('../services/passkeyStore');
 const logger = require('../utils/logger');
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'production';
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 const SESSION_COOKIE_NAME = 'DUMBLOAD_SESSION';
 
@@ -117,13 +114,7 @@ function requireAuth() {
       const cookiePin = req.cookies?.DUMBLOAD_PIN;
       if (config.pin && cookiePin && safeCompare(cookiePin, config.pin)) {
         const newToken = createSession(req.ip);
-        res.cookie(SESSION_COOKIE_NAME, newToken, {
-          httpOnly: true,
-          secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-          sameSite: 'strict',
-          path: '/',
-          maxAge: SESSION_DURATION
-        });
+        res.cookie(SESSION_COOKIE_NAME, newToken, getSessionCookieOptions(req));
         return next();
       }
 
@@ -131,13 +122,7 @@ function requireAuth() {
       const headerPin = req.headers['x-pin'];
       if (config.pin && headerPin && safeCompare(headerPin, config.pin)) {
         const newToken = createSession(req.ip);
-        res.cookie(SESSION_COOKIE_NAME, newToken, {
-          httpOnly: true,
-          secure: req.secure || (BASE_URL.startsWith('https') && NODE_ENV === 'production'),
-          sameSite: 'strict',
-          path: '/',
-          maxAge: SESSION_DURATION
-        });
+        res.cookie(SESSION_COOKIE_NAME, newToken, getSessionCookieOptions(req));
         return next();
       }
     }

@@ -88,7 +88,17 @@ h1 {
     font-size: 2.5rem;
     font-weight: 700;
     letter-spacing: -0.5px;
-    padding-right: 60px;
+    text-align: center;
+}
+
+.site-footer {
+    margin-top: 40px;
+    padding: 16px 0 8px;
+    text-align: center;
+    color: var(--highlight-color);
+    font-size: 0.8rem;
+    opacity: 0.9;
+    line-height: 1.5;
 }
 
 .upload-container {

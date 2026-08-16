@@ -178,6 +178,23 @@ const config = {
    */
   pin: validatePin(process.env.DUMBLOAD_PIN),
   /**
+   * Login session timeout in milliseconds.
+   * Set via SESSION_TIMEOUT in .env (seconds), or "instant"/"0" for a
+   * browser-session-only login (cookie cleared when the browser closes).
+   * Defaults to 8 hours. 0 = instant (session cookie, no maxAge).
+   */
+  sessionTimeoutMs: (() => {
+    const raw = (process.env.SESSION_TIMEOUT || '').trim();
+    if (!raw) return 8 * 60 * 60 * 1000; // default 8h
+    if (raw.toLowerCase() === 'instant' || raw === '0') return 0; // instant
+    const seconds = parseInt(raw, 10);
+    if (isNaN(seconds) || seconds <= 0) {
+      logConfig(`Invalid SESSION_TIMEOUT value: "${raw}". Using default 8 hours.`, 'warning');
+      return 8 * 60 * 60 * 1000;
+    }
+    return seconds * 1000;
+  })(),
+  /**
    * Trust proxy for X-Forwarded-For header (default: false for security)
    * Only enable if behind a trusted reverse proxy
    * Set via TRUST_PROXY in .env
