@@ -35,7 +35,7 @@ docker run -p 3800:3000 -v ./uploads:/app/uploads dumbload
 
 ### Option 2: Docker Compose (For Dummies who like customizing)
 
-Create a `docker-compose.yml` file:
+Create a `docker-compose.yml` file (or use the one in this repo, which ships with Unraid-friendly defaults):
 
 ```yaml
 services:
@@ -45,13 +45,16 @@ services:
     ports:
       - "3800:3000"
     volumes:
-      # Where your uploaded files will land
-      - ./uploads:/app/uploads
+      # App config (passkeys etc.) - Unraid appdata
+      - /mnt/user/appdata/dumbload:/app/config
+      # Uploaded/download files - own share
+      - /mnt/user/dumbload-files:/app/uploads
     env_file:
       - .env
     environment:
-      # Container-internal upload path (must match the volume mount)
+      # Container-internal paths (must match the volume mounts above)
       UPLOAD_DIR: /app/uploads
+      DUMBLOAD_CONFIG_DIR: /app/config
 ```
 
 Create a `.env` file (copy from `.env.example`) and configure your settings:
@@ -68,10 +71,10 @@ docker compose up -d
 ```
 
 1. Go to http://localhost:3800
-2. Upload a File - It'll show up in ./uploads
+2. Upload a File - It'll show up in your files folder
 3. Rejoice in the glory of your dumb uploads
 
-> **Note:** The `UPLOAD_DIR` environment variable is explicitly set to `/app/uploads` in the container (it is a container-specific path, not a user setting). All other settings live in the `.env` file. The host directory `./uploads` is mounted to `/app/uploads` for persistent storage.
+> **Note:** `UPLOAD_DIR` and `DUMBLOAD_CONFIG_DIR` are container-specific paths set in compose (they must match the volume mounts), not user settings. All other settings live in the `.env` file. The host paths (`/mnt/user/appdata/dumbload`, `/mnt/user/dumbload-files`) are configurable via `APP_DATA_PATH` and `FILES_PATH` in `.env`.
 
 ### Option 3: Running Locally (For Developers)
 

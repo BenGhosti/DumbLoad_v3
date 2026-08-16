@@ -12,6 +12,7 @@ const fs = require('fs'); // Get version from package.json
  * BASE_URL            - Base URL for the app (default: http://localhost:${PORT})
  * UPLOAD_DIR          - Directory for uploads (Docker/production)
  * LOCAL_UPLOAD_DIR    - Directory for uploads (local dev, fallback: './local_uploads')
+ * DUMBLOAD_CONFIG_DIR - Directory for app config (passkeys); defaults to upload dir
  * MAX_FILE_SIZE       - Max upload size in MB (default: 1024)
  * AUTO_UPLOAD         - Enable auto-upload (true/false, default: false)
  * SHOW_FILE_LIST      - Enable file listing in frontend (true/false, default: false)
@@ -104,6 +105,11 @@ function ensureLocalUploadDirExists(uploadDir) {
 // Determine and ensure upload directory (for local dev)
 const resolvedUploadDir = determineUploadDirectory();
 ensureLocalUploadDirExists(resolvedUploadDir);
+
+// Config directory (passkeys etc.). Defaults to the upload directory for
+// backward compatibility; in Docker/Unraid this is set to a dedicated appdata
+// mount (e.g. /app/config) so config survives separately from uploaded files.
+const resolvedConfigDir = process.env.DUMBLOAD_CONFIG_DIR || resolvedUploadDir;
 
 /**
  * Application configuration
@@ -294,9 +300,14 @@ const config = {
    */
   adminPath: process.env.DUMBLOAD_ADMIN_PATH || '/admin/passkeys',
   /**
+   * Directory for persistent app configuration (passkeys etc.)
+   * Priority: DUMBLOAD_CONFIG_DIR > upload directory (backward compatible)
+   */
+  configDir: resolvedConfigDir,
+  /**
    * Path to the passkey storage file
    */
-  passkeyFilePath: require('path').join(resolvedUploadDir, '.passkeys.json'),
+  passkeyFilePath: require('path').join(resolvedConfigDir, '.passkeys.json'),
 };
 
 console.log(`Upload directory configured as: ${config.uploadDir}`);

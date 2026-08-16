@@ -8,11 +8,14 @@
             # Externally reachable on port 3800 -> internal app port 3000
             - "3800:3000"
         volumes:
-            # Replace "./local_uploads" (before the colon) with the path where files land on the host
-            - ./local_uploads:/app/uploads
+            # Appdata: persistent app config (passkeys etc.) - classic Unraid appdata folder
+            - ${APP_DATA_PATH:-/mnt/user/appdata/dumbload}:/app/config
+            # Uploaded/download files - own share, reachable over the network
+            - ${FILES_PATH:-/mnt/user/dumbload-files}:/app/uploads
         env_file:
             - .env
         environment:
-            # Container-internal upload path (must match the volume mount above).
-            # This stays in compose because it is a container-specific path, not a user setting.
+            # Container-internal paths (must match the volume mounts above).
+            # These stay in compose because they are container-specific paths, not user settings.
             UPLOAD_DIR: /app/uploads
+            DUMBLOAD_CONFIG_DIR: /app/config
