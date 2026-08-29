@@ -22,6 +22,7 @@ const { initUploadLimiter, pinVerifyLimiter, pinStatusLimiter, downloadLimiter }
 const { injectDemoBanner, demoMiddleware } = require('./utils/demoMode');
 const { originValidationMiddleware, getCorsOptions } = require('./middleware/cors');
 const { loadPasskeys } = require('./services/passkeyStore');
+const { isGuestFeatureEnabled } = require('./utils/guestPins');
 
 // Create Express app
 const app = express();
@@ -59,6 +60,7 @@ app.use((req, res, next) => {
     '/login.html',
     '/api/auth/logout',
     '/api/auth/verify-pin',
+    '/api/auth/guest-verify',
     '/api/auth/pin-required',
     '/api/auth/pin-length',
     '/api/auth/status',
@@ -89,6 +91,7 @@ const { router: uploadRouter } = require('./routes/upload');
 const fileRoutes = require('./routes/files');
 const authRoutes = require('./routes/auth');
 const passkeyRoutes = require('./routes/passkey');
+const guestPinsRoutes = require('./routes/guestPins');
 
 // Use routes with appropriate middleware
 // Apply strict rate limiting to PIN verification, but more permissive to status checks
@@ -102,13 +105,19 @@ app.use('/api/passkey/auth-options', pinStatusLimiter);
 app.use('/api/passkey/auth-verify', pinVerifyLimiter);
 app.use('/api/passkey', passkeyRoutes);
 
-app.use('/api/upload', requireAuth(), initUploadLimiter, uploadRouter);
+// Upload routes allow guest sessions (upload-only access).
+// All other routes below reject guest sessions (requireAuth default).
+app.use('/api/upload', requireAuth({ allowGuest: true }), initUploadLimiter, uploadRouter);
 app.use('/api/files', requireAuth(), downloadLimiter, fileRoutes);
+
+// Guest PIN management (admin only)
+app.use('/api/guest-pins', requireAuth(), guestPinsRoutes);
 
 // Root route
 app.get('/', (req, res) => {
   // Check if authentication is required and a valid session exists
-  const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+  const session = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+  const hasValidSession = !!session;
   const hasValidPinCookie = config.authMode !== 'passkey' &&
     req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
   if (isAuthRequired() && !hasValidSession && !hasValidPinCookie) {
@@ -119,9 +128,14 @@ app.get('/', (req, res) => {
   html = html.replace(/{{SITE_TITLE}}/g, config.siteTitle);
   html = html.replace('{{AUTO_UPLOAD}}', config.autoUpload.toString());
   html = html.replace('{{MAX_RETRIES}}', config.clientMaxRetries.toString());
-  html = html.replace('{{SHOW_FILE_LIST}}', config.showFileList.toString());
+  // Guests never see the file list
+  const showFileList = session?.role === 'guest' ? false : config.showFileList;
+  html = html.replace('{{SHOW_FILE_LIST}}', showFileList.toString());
   html = html.replace('{{MAX_FILE_SIZE_MB}}', Math.floor(config.maxFileSize / (1024 * 1024)).toString());
   html = html.replace('{{ALLOWED_EXTENSIONS}}', config.allowedExtensions ? config.allowedExtensions.join(',') : '');
+  // Guest PIN management button: only for logged-in admins when the feature is on
+  const showGuestAdmin = session?.role === 'admin' && isGuestFeatureEnabled();
+  html = html.replace('{{GUEST_PIN_ADMIN}}', showGuestAdmin ? 'true' : 'false');
   html = injectDemoBanner(html);
   res.send(html);
 });
@@ -172,12 +186,15 @@ app.use((req, res, next) => {
 
   // index.html must respect authentication just like the "/" route
   if (req.path === '/index.html' || req.path === 'index.html') {
-    const hasValidSession = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+    const session = isValidSession(req.cookies?.DUMBLOAD_SESSION);
+    const hasValidSession = !!session;
     const hasValidPinCookie = config.authMode !== 'passkey' &&
       req.cookies?.DUMBLOAD_PIN && safeCompare(req.cookies.DUMBLOAD_PIN, config.pin);
     if (isAuthRequired() && !hasValidSession && !hasValidPinCookie) {
       return res.redirect('/login.html');
     }
+    // Guests never see the file list
+    req.sessionForTemplate = session;
   }
   
   try {
@@ -187,9 +204,12 @@ app.use((req, res, next) => {
     if (req.path === '/index.html' || req.path === 'index.html') {
       html = html.replace('{{AUTO_UPLOAD}}', config.autoUpload.toString());
       html = html.replace('{{MAX_RETRIES}}', config.clientMaxRetries.toString());
-      html = html.replace('{{SHOW_FILE_LIST}}', config.showFileList.toString());
+      const showFileList = req.sessionForTemplate?.role === 'guest' ? false : config.showFileList;
+      html = html.replace('{{SHOW_FILE_LIST}}', showFileList.toString());
       html = html.replace('{{MAX_FILE_SIZE_MB}}', Math.floor(config.maxFileSize / (1024 * 1024)).toString());
       html = html.replace('{{ALLOWED_EXTENSIONS}}', config.allowedExtensions ? config.allowedExtensions.join(',') : '');
+      const showGuestAdmin = req.sessionForTemplate?.role === 'admin' && isGuestFeatureEnabled();
+      html = html.replace('{{GUEST_PIN_ADMIN}}', showGuestAdmin ? 'true' : 'false');
     }
     // Ensure baseUrl has a trailing slash
     const baseUrlWithSlash = config.baseUrl.endsWith('/') ? config.baseUrl : config.baseUrl + '/';

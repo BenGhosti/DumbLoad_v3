@@ -330,6 +330,116 @@ const config = {
    * Path to the passkey storage file
    */
   passkeyFilePath: require('path').join(resolvedConfigDir, '.passkeys.json'),
+
+  // =====================
+  // Guest PIN access
+  // =====================
+  /**
+   * Enable guest PIN upload access (true/false, default: false).
+   * Only effective when a DUMBLOAD_PIN is configured (guest PINs share its length).
+   */
+  guestPinEnabled: process.env.GUEST_PIN_ENABLED === 'true',
+  /**
+   * Default TTL for new guest PINs in minutes (default: 1440 = 24h)
+   */
+  guestPinTtlDefaultMs: (() => {
+    const minutes = parseInt(process.env.GUEST_PIN_TTL_DEFAULT || '1440', 10);
+    return (isNaN(minutes) || minutes < 1) ? 1440 * 60 * 1000 : minutes * 60 * 1000;
+  })(),
+  /**
+   * Default max number of uploads per guest PIN (default: 1; 0 = unlimited)
+   */
+  guestPinMaxUploadsDefault: (() => {
+    const n = parseInt(process.env.GUEST_PIN_MAX_UPLOADS_DEFAULT || '1', 10);
+    return (isNaN(n) || n < 0) ? 1 : n;
+  })(),
+  /**
+   * Default total size quota per guest PIN in MB (default: 500; 0 = unlimited)
+   */
+  guestPinMaxTotalBytesDefault: (() => {
+    const mb = parseInt(process.env.GUEST_PIN_MAX_TOTAL_MB_DEFAULT || '500', 10);
+    const mbs = (isNaN(mb) || mb < 1) ? 500 : mb;
+    return mbs * 1024 * 1024;
+  })(),
+  /**
+   * Folder name prefix for guest uploads (default: 'guest')
+   * Guest files land in <uploadDir>/<prefix>/<name>_<pinId>_<YYYYMMDD>/
+   */
+  guestPinPrefix: (process.env.GUEST_PIN_PREFIX || 'guest').trim().replace(/[^a-zA-Z0-9_-]/g, '') || 'guest',
+  /**
+   * Session timeout for guest sessions in seconds (default: 14400 = 4h)
+   */
+  guestSessionTimeoutMs: (() => {
+    const seconds = parseInt(process.env.GUEST_SESSION_TIMEOUT || '14400', 10);
+    return (isNaN(seconds) || seconds < 60) ? 14400 * 1000 : seconds * 1000;
+  })(),
+  /**
+   * Path to the guest PIN storage file
+   */
+  guestPinsFilePath: require('path').join(resolvedConfigDir, 'guestPins.json'),
+
+  // =====================
+  // Malware scanning
+  // =====================
+  /**
+   * ClamAV scan scope: 'off' (disabled), 'guest' (only guest uploads), 'all' (every upload)
+   */
+  clamavScanEnabled: (() => {
+    const v = (process.env.CLAMAV_SCAN_ENABLED || 'off').toLowerCase();
+    return ['off', 'guest', 'all'].includes(v) ? v : 'off';
+  })(),
+  /**
+   * clamd host / port (TCP)
+   */
+  clamavHost: process.env.CLAMAV_HOST || '127.0.0.1',
+  clamavPort: parseInt(process.env.CLAMAV_PORT || '3310', 10) || 3310,
+  /**
+   * Scan timeout in ms (default: 30000)
+   */
+  clamavTimeoutMs: parseInt(process.env.CLAMAV_TIMEOUT_MS || '30000', 10) || 30000,
+  /**
+   * true = accept upload when clamd is unreachable (with warning), false = reject
+   */
+  clamavFailOpen: process.env.CLAMAV_FAIL_OPEN !== 'false',
+  /**
+   * Optional VirusTotal scan as additional engine (applies to ALL uploads)
+   */
+  virustotalEnabled: process.env.VIRUSTOTAL_ENABLED === 'true',
+  /**
+   * VirusTotal API key(s), comma-separated for rotation: "key1,key2,key3".
+   * When the first key hits its rate limit the next key is used automatically.
+   */
+  virustotalApiKey: process.env.VIRUSTOTAL_API_KEY || '',
+  /**
+   * Parsed array of VirusTotal API keys (from the comma-separated env var)
+   */
+  virustotalApiKeys: (() => {
+    return (process.env.VIRUSTOTAL_API_KEY || '')
+      .split(',')
+      .map(k => k.trim())
+      .filter(Boolean);
+  })(),
+  /**
+   * Max file size for VirusTotal scan in MB (free tier: 32)
+   */
+  virustotalMaxFileSizeBytes: (() => {
+    const mb = parseInt(process.env.VIRUSTOTAL_MAX_FILE_SIZE || '32', 10);
+    const mbs = (isNaN(mb) || mb < 1) ? 32 : mb;
+    return mbs * 1024 * 1024;
+  })(),
+  /**
+   * Number of malicious engine findings required to treat a file as infected
+   */
+  virustotalMinMaliciousEngines: (() => {
+    const n = parseInt(process.env.VIRUSTOTAL_MIN_MALICIOUS_ENGINES || '3', 10);
+    return (isNaN(n) || n < 1) ? 3 : n;
+  })(),
+  /**
+   * Upload unknown files to VirusTotal for a fresh analysis.
+   * Default false: only the SHA-256 hash is sent (privacy-safe). When true,
+   * files whose hash is not yet known are uploaded (public in the free tier).
+   */
+  virustotalUploadUnknown: process.env.VIRUSTOTAL_UPLOAD_UNKNOWN === 'true',
 };
 
 console.log(`Upload directory configured as: ${config.uploadDir}`);
@@ -367,6 +477,28 @@ function validateConfig() {
     logger.info(`Passkey management enabled at: ${config.adminPath}`);
   } else {
     logger.info('Passkey management disabled (DUMBLOAD_ADMIN_PATH not set)');
+  }
+
+  if (config.guestPinEnabled) {
+    if (!config.pin) {
+      logger.warn('GUEST_PIN_ENABLED is set but DUMBLOAD_PIN is empty - guest PIN feature disabled (guest PINs need a master PIN length)');
+    } else {
+      logger.info(`Guest PIN feature enabled (PIN length: ${config.pin.length}, TTL default: ${config.guestPinTtlDefaultMs / 60000} min)`);
+    }
+  }
+
+  if (config.virustotalEnabled) {
+    if (config.virustotalApiKeys.length === 0) {
+      errors.push('VIRUSTOTAL_ENABLED=true requires VIRUSTOTAL_API_KEY to be set');
+    } else if (config.virustotalUploadUnknown) {
+      logger.warn(`VirusTotal: ${config.virustotalApiKeys.length} key(s) configured, unknown files will be UPLOADED for analysis (public samples in the free tier!). Hash lookups alone stay private.`);
+    } else {
+      logger.info(`VirusTotal scanning enabled (${config.virustotalApiKeys.length} API key(s), hash lookup only - no file content is sent)`);
+    }
+  }
+
+  if (config.clamavScanEnabled !== 'off') {
+    logger.info(`ClamAV scanning enabled (scope: ${config.clamavScanEnabled}) - clamd at ${config.clamavHost}:${config.clamavPort}`);
   }
   
   if (config.nodeEnv === 'production') {

@@ -36,6 +36,10 @@ module.exports = [
         clearTimeout: 'readonly',
         clearInterval: 'readonly',
         URL: 'readonly',
+        fetch: 'readonly',
+        FormData: 'readonly',
+        Blob: 'readonly',
+        Headers: 'readonly',
       },
     },
     plugins: {

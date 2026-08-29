@@ -14,6 +14,8 @@ A stupid-simple, self-hosted file uploader. Drop files into a folder through a c
 - ⚡ **Chunked uploads** with retry + resumable transfers (handles huge files)
 - 🔐 **Authentication** — PIN, Passkey (WebAuthn), or **both** (PIN as fallback when you don't have your key)
 - 🧭 **Passkey management** — add/remove security keys from a secret admin page
+- 🎟️ **Guest PIN access (optional)** — create time-limited, usage-limited upload PINs from the admin page; guests can upload without an account
+- 🦠 **Malware scanning (optional)** — ClamAV (local) and/or VirusTotal (background) scanning of uploads
 - ⏱️ **Configurable session timeout** — from 8 hours down to "instant"
 - 🛡️ **Rate limiting** + brute-force protection with IP tracking
 - 🎨 **Dark mode** + responsive **mobile view** with touch-friendly controls
@@ -119,6 +121,37 @@ All settings live in the `.env` file. Copy `.env.example` to get started.
 | `TRUST_PROXY`        | Trust proxy headers (`X-Forwarded-*`) — enable behind a reverse proxy | `false`      |
 | `TRUSTED_PROXY_IPS`  | Comma-separated trusted proxy IPs (requires `TRUST_PROXY=true`)    | *(none)*         |
 
+### Guest PIN access
+
+| Variable                    | Description                                                        | Default          |
+| --------------------------- | ------------------------------------------------------------------ | ---------------- |
+| `GUEST_PIN_ENABLED`         | Enable guest upload PINs (requires `DUMBLOAD_PIN`)                 | `false`          |
+| `GUEST_PIN_TTL_DEFAULT`     | Default TTL for new guest PINs (minutes)                           | `1440` (24h)     |
+| `GUEST_PIN_MAX_UPLOADS_DEFAULT` | Default max uploads per PIN (0 = unlimited)                    | `1`              |
+| `GUEST_PIN_MAX_TOTAL_MB_DEFAULT`| Default total size quota per PIN in MB (0 = unlimited)         | `500`            |
+| `GUEST_PIN_PREFIX`          | Folder prefix for guest uploads                                    | `guest`          |
+| `GUEST_SESSION_TIMEOUT`     | Guest session lifetime (seconds)                                   | `14400` (4h)     |
+
+### Malware scanning
+
+| Variable                        | Description                                                        | Default         |
+| ------------------------------- | ------------------------------------------------------------------ | --------------- |
+| `CLAMAV_SCAN_ENABLED`           | `off`, `guest` (only guest uploads), or `all` (every upload)       | `off`           |
+| `CLAMAV_HOST` / `CLAMAV_PORT`   | clamd address                                                      | `127.0.0.1`/`3310` |
+| `CLAMAV_TIMEOUT_MS`             | Scan timeout                                                       | `30000`         |
+| `CLAMAV_FAIL_OPEN`              | Accept upload when clamd is down (`true`) or reject (`false`)      | `true`          |
+| `VIRUSTOTAL_ENABLED`            | Extra VirusTotal scan (background, all uploads)                    | `false`         |
+| `VIRUSTOTAL_API_KEY`            | Comma-separated API keys; next key is used automatically when one hits its rate limit | *(none)* |
+| `VIRUSTOTAL_MAX_FILE_SIZE`      | Max file size for VT scans in MB (free tier: 32)                   | `32`            |
+| `VIRUSTOTAL_MIN_MALICIOUS_ENGINES` | Malicious engine count that counts as infected                  | `3`             |
+
+| `VIRUSTOTAL_UPLOAD_UNKNOWN` | Upload unknown-hash files for analysis (see warning)              | `false`          |
+
+> **VirusTotal privacy note:** by default only the file's **SHA-256 hash** is
+> sent for a lookup — no file content ever leaves your server. Only if
+> `VIRUSTOTAL_UPLOAD_UNKNOWN=true` are unknown files uploaded for analysis; in
+> the free tier those samples are **public**.
+
 ### Notifications
 
 | Variable            | Description                                    | Default                                           |
@@ -133,6 +166,31 @@ All settings live in the `.env` file. Copy `.env.example` to get started.
 | ------------------- | ---------------------------------------------- | ------------------- |
 | `ALLOWED_ORIGINS`   | Comma-separated allowed CORS origins           | `*`                 |
 | `ALLOWED_IFRAME_ORIGINS` | *(deprecated — use `ALLOWED_ORIGINS`)*     | *(none)*            |
+
+---
+
+## 🎟️ Guest PIN access (optional)
+
+Give people temporary upload access without handing out the master PIN:
+
+1. Set `GUEST_PIN_ENABLED=true` (and `DUMBLOAD_PIN`).
+2. Log in as admin and open the main page's **guest PIN** button (top-left) or the secret admin page.
+3. Create a PIN (choose TTL, max uploads, total quota). The PIN is shown **exactly once** — copy it and share it.
+4. Guests open your URL, enter **their name + the guest PIN**, and can only upload. Files land in `uploads/guest/<name>_<pinId>_<YYYYMMDD>/`.
+5. The admin page lists every PIN with status, usage, quota, and a per-PIN upload log (with scan results) — no Apprise needed for guests.
+
+Guest PINs:
+- are as long as the master PIN (they cannot be distinguished from outside),
+- are stored only as scrypt hashes,
+- expire after their TTL or once `maxUploads`/the total quota is used up,
+- can be revoked immediately.
+
+---
+
+## 🦠 Malware scanning (optional)
+
+- **ClamAV** (`CLAMAV_SCAN_ENABLED=guest|all`) scans synchronously; infected files are deleted and the upload is rejected. `CLAMAV_FAIL_OPEN` decides what happens if clamd is unreachable.
+- **VirusTotal** (`VIRUSTOTAL_ENABLED=true`) runs as an extra engine in the background and never blocks uploads. It first computes the local **SHA-256 hash** and looks it up on VirusTotal — no file content leaves the server. Unknown hashes are marked *not analyzed* unless `VIRUSTOTAL_UPLOAD_UNKNOWN=true` (then they are uploaded; only that upload path is limited by `VIRUSTOTAL_MAX_FILE_SIZE` and the rate limit). If a verdict comes back infected, the file is deleted afterwards.
 
 ---
 
@@ -153,6 +211,8 @@ TRUST_PROXY=true
 
 - Constant-time PIN comparison
 - Session tokens (HTTP-only, `SameSite=strict` cookies) with configurable timeout
+- Role separation: guest sessions can only upload, never list/download/delete files or reach the admin
+- Guest PINs stored as scrypt hashes only (never readable again after creation)
 - IP-based rate limiting + lockout (defends brute force, spoofing-safe)
 - Path-traversal protection on all file operations
 - Filename sanitization + extension filtering

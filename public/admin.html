@@ -296,7 +296,7 @@
                     info.className = 'passkey-info';
                     const name = document.createElement('div');
                     name.className = 'passkey-name';
-                    name.textContent = key.name || 'Unbenannter Schlüssel';
+                    name.textContent = key.name || 'Unnamed key';
                     const meta = document.createElement('div');
                     meta.className = 'passkey-meta';
                     const created = key.createdAt ? new Date(key.createdAt).toLocaleString() : 'unknown';

@@ -93,8 +93,12 @@ function isAuthRequired() {
 /**
  * Unified authentication middleware for protected routes.
  * Supports PIN, Passkey, and both modes via session tokens.
+ * Guest sessions (role='guest') are only allowed when allowGuest is true
+ * (i.e. upload routes); all other routes reject guests with 401.
+ * @param {Object} [options] - { allowGuest: boolean }
  */
-function requireAuth() {
+function requireAuth(options = {}) {
+  const allowGuest = !!options.allowGuest;
   return (req, res, next) => {
     // If no auth is configured, allow access
     if (!isAuthRequired()) {
@@ -103,7 +107,14 @@ function requireAuth() {
 
     // Check session token first (from PIN or Passkey login)
     const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
-    if (isValidSession(sessionToken)) {
+    const session = isValidSession(sessionToken);
+    if (session) {
+      // Guest sessions may only access routes explicitly marked allowGuest
+      if (session.role === 'guest' && !allowGuest) {
+        logger.warn(`Guest session attempted to access restricted path from IP: ${req.ip}`);
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      req.session = session;
       return next();
     }
 
@@ -114,6 +125,7 @@ function requireAuth() {
       const cookiePin = req.cookies?.DUMBLOAD_PIN;
       if (config.pin && cookiePin && safeCompare(cookiePin, config.pin)) {
         const newToken = createSession(req.ip);
+        req.session = { role: 'admin', guestId: null, ip: req.ip };
         res.cookie(SESSION_COOKIE_NAME, newToken, getSessionCookieOptions(req));
         return next();
       }
@@ -122,6 +134,7 @@ function requireAuth() {
       const headerPin = req.headers['x-pin'];
       if (config.pin && headerPin && safeCompare(headerPin, config.pin)) {
         const newToken = createSession(req.ip);
+        req.session = { role: 'admin', guestId: null, ip: req.ip };
         res.cookie(SESSION_COOKIE_NAME, newToken, getSessionCookieOptions(req));
         return next();
       }
@@ -132,9 +145,31 @@ function requireAuth() {
   };
 }
 
+/**
+ * Role-based access control middleware.
+ * Requires a valid session with the given role ('admin' or 'guest').
+ * @param {string} role - Required role
+ */
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!isAuthRequired()) {
+      return next();
+    }
+    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
+    const session = isValidSession(sessionToken);
+    if (session && session.role === role) {
+      req.session = session;
+      return next();
+    }
+    logger.warn(`Access denied (role "${role}" required) from IP: ${req.ip}`);
+    res.status(401).json({ error: 'Unauthorized' });
+  };
+}
+
 module.exports = {
   // securityHeaders, // Deprecated, use helmet instead
   getHelmetConfig,
   requireAuth,
+  requireRole,
   isAuthRequired
 }; 

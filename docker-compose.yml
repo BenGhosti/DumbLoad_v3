@@ -19,3 +19,15 @@
             # These stay in compose because they are container-specific paths, not user settings.
             UPLOAD_DIR: /app/uploads
             DUMBLOAD_CONFIG_DIR: /app/config
+
+    # Optional malware scanner (clamd). Enable with:
+    #   CLAMAV_SCAN_ENABLED=all|guest
+    #   CLAMAV_HOST=clamav
+    #   CLAMAV_PORT=3310
+    clamav:
+        image: clamav/clamav:stable
+        container_name: dumbload-clamav
+        restart: unless-stopped
+        volumes:
+            # Persistent virus definitions (freshclam downloads)
+            - ${APP_DATA_PATH:-/mnt/user/appdata/dumbload}/clamav:/var/lib/clamav

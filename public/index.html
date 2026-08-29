@@ -9,6 +9,256 @@
     <script src="toastify/toastify.js"></script>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="assets/icon.png">
+    <style>
+        .guest-settings-toggle {
+            right: auto;
+            left: 20px;
+        }
+        .guest-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 5vh 1rem;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        .guest-modal-content {
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-width: 640px;
+            width: 100%;
+            padding: 1.5rem;
+            box-sizing: border-box;
+            animation: fade-in-up 0.25s ease-out both;
+        }
+        .guest-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.4rem;
+        }
+        .guest-modal-header h2 {
+            margin: 0;
+            font-size: 1.4rem;
+            color: var(--text-color);
+        }
+        .guest-modal-close {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.3rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+        .guest-modal-close:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+        .guest-modal-note {
+            font-size: 0.85rem;
+            opacity: 0.7;
+            margin: 0 0 1rem 0;
+        }
+        .guest-create-section {
+            background: var(--bg-color);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1.2rem;
+            border: 1px solid var(--border-color);
+        }
+        .guest-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 0.6rem;
+        }
+        .guest-form input {
+            min-width: 0;
+            padding: 9px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        .guest-form input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.25);
+        }
+        #create-guest-pin-btn {
+            padding: 9px 14px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color);
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #create-guest-pin-btn:hover:not(:disabled) {
+            background: var(--highlight-hover);
+        }
+        #create-guest-pin-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .guest-create-result {
+            margin-top: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            background: rgba(76, 175, 80, 0.12);
+            border: 1px solid rgba(76, 175, 80, 0.35);
+            font-size: 0.85rem;
+        }
+        .guest-new-pin {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: 0.5em;
+            text-align: center;
+            margin: 0.6rem 0;
+            color: var(--text-color);
+            font-variant-numeric: tabular-nums;
+        }
+        #guest-copy-pin-btn {
+            display: block;
+            margin: 0 auto 0.4rem auto;
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            background: var(--text-color);
+            color: var(--bg-color);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .guest-copy-hint {
+            text-align: center;
+            margin: 0;
+            font-size: 0.78rem;
+            opacity: 0.75;
+        }
+        .guest-list-section h3 {
+            margin: 0 0 0.6rem 0;
+            font-size: 1rem;
+            color: var(--text-color);
+        }
+        .guest-item {
+            padding: 0.8rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .guest-item:last-child {
+            border-bottom: none;
+        }
+        .guest-item-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+        .guest-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .guest-item-name {
+            font-weight: 600;
+            color: var(--text-color);
+        }
+        .guest-item-meta {
+            font-size: 0.78rem;
+            color: var(--text-color);
+            opacity: 0.65;
+            line-height: 1.5;
+        }
+        .guest-badge {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin-left: 0.4rem;
+        }
+        .guest-badge.active { background: rgba(76, 175, 80, 0.18); color: #4CAF50; }
+        .guest-badge.expired { background: rgba(158, 158, 158, 0.2); color: #9e9e9e; }
+        .guest-badge.used-up { background: rgba(255, 152, 0, 0.18); color: #ff9800; }
+        .guest-badge.revoked { background: rgba(244, 67, 54, 0.18); color: var(--danger-color); }
+        .guest-item-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .guest-log-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 5px 11px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .guest-log-btn:hover {
+            background: var(--textarea-bg);
+        }
+        .guest-revoke-btn {
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.82rem;
+        }
+        .guest-revoke-btn:hover {
+            background: #c0392b;
+        }
+        .guest-log {
+            margin-top: 0.6rem;
+            background: var(--textarea-bg);
+            border-radius: 6px;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.8rem;
+            display: none;
+        }
+        .guest-log.open {
+            display: block;
+        }
+        .guest-log table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .guest-log th, .guest-log td {
+            text-align: left;
+            padding: 4px 6px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .guest-log th {
+            font-weight: 600;
+            opacity: 0.7;
+            font-size: 0.75rem;
+        }
+        .guest-log-empty {
+            opacity: 0.6;
+            font-style: italic;
+            padding: 0.4rem 0;
+        }
+        .scan-ok { color: #4CAF50; }
+        .scan-found { color: var(--danger-color); font-weight: 600; }
+        .scan-warn { color: #ff9800; }
+        @media (max-width: 640px) {
+            .guest-form {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -25,7 +275,13 @@
                 <line class="sun" x1="1" y1="12" x2="3" y2="12" style="display:none"/>
                 <line class="sun" x1="21" y1="12" x2="23" y2="12" style="display:none"/>
                 <line class="sun" x1="4.22" y1="19.78" x2="5.64" y2="18.36" style="display:none"/>
-                <line class="sun" x1="18.36" y1="5.64" x2="19.78" y2="4.22" style="display:none"/>
+            </svg>
+        </button>
+        <button class="theme-toggle guest-settings-toggle" id="guestSettingsBtn" onclick="openGuestSettings()" aria-label="Manage guest PINs" style="display:none;" title="Manage guest PINs">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>
             </svg>
         </button>
         <h1>{{SITE_TITLE}}</h1>
@@ -82,6 +338,39 @@
             <div class="rename-actions">
                 <button class="modal-btn modal-btn-cancel" onclick="fileListManager.cancelRename()">Cancel</button>
                 <button class="modal-btn modal-btn-confirm" onclick="fileListManager.confirmRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guest PIN management modal (admin only) -->
+    <div id="guestSettingsModal" class="guest-modal" style="display:none;">
+        <div class="guest-modal-content">
+            <div class="guest-modal-header">
+                <h2>Guest PINs</h2>
+                <button class="guest-modal-close" onclick="closeGuestSettings()" aria-label="Close">✕</button>
+            </div>
+            <p class="guest-modal-note">Create time-limited upload PINs. Guests enter their PIN in the login field and are asked for their name afterwards.</p>
+
+            <div class="guest-create-section">
+                <div class="guest-form">
+                    <input type="number" id="guest-ttl" min="1" placeholder="Validity (minutes, e.g. 1440)">
+                    <input type="number" id="guest-max-uploads" min="0" placeholder="Max uploads (0 = unlimited)">
+                    <input type="number" id="guest-max-mb" min="0" placeholder="Max MB (0 = unlimited)">
+                    <button id="create-guest-pin-btn" type="button">Create Guest PIN</button>
+                </div>
+                <div id="guest-create-result" class="guest-create-result" style="display:none;">
+                    <strong>Guest PIN shown only once:</strong>
+                    <div id="guest-new-pin" class="guest-new-pin"></div>
+                    <button id="guest-copy-pin-btn" type="button">Copy PIN</button>
+                    <p class="guest-copy-hint">Store the PIN now - it will not be shown again.</p>
+                </div>
+            </div>
+
+            <div class="guest-list-section">
+                <h3>Guest PIN Overview</h3>
+                <div id="guest-list-container">
+                    <div class="loading-message">Loading guest PINs...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -173,15 +462,17 @@
                     if (this.progressElement) {
                         let userMessage = error.message || 'Upload failed';
                         if (error.message.includes('413') || error.message.includes('File too large')) {
-                            userMessage = 'Datei ist zu groß';
+                            userMessage = 'File too large';
+                        } else if (error.message.toLowerCase().includes('quota')) {
+                            userMessage = error.message;
                         } else if (error.message.includes('400') || error.message.includes('not allowed')) {
-                            userMessage = 'Dateityp nicht erlaubt';
+                            userMessage = 'File type not allowed';
                         } else if (error.message.includes('403')) {
-                            userMessage = 'Zugriff verweigert';
+                            userMessage = 'Access denied';
                         } else if (error.message.includes('500')) {
-                            userMessage = 'Serverfehler';
+                            userMessage = 'Server error';
                         }
-                        this.progressElement.infoSpan.textContent = `Fehler: ${userMessage}`;
+                        this.progressElement.infoSpan.textContent = `Error: ${userMessage}`;
                         this.progressElement.infoSpan.style.color = 'var(--danger-color)';
                     }
                     return false;
@@ -1167,12 +1458,12 @@
             for (const file of fileList) {
                 const fileName = file.webkitRelativePath || file.name;
                 if (MAX_FILE_SIZE_BYTES && file.size > MAX_FILE_SIZE_BYTES) {
-                    errors.push(`Datei "${fileName}" ist zu groß (${formatFileSize(file.size)} > Limit ${formatFileSize(MAX_FILE_SIZE_BYTES)})`);
+                    errors.push(`File "${fileName}" is too large (${formatFileSize(file.size)} > limit ${formatFileSize(MAX_FILE_SIZE_BYTES)})`);
                 }
                 if (ALLOWED_EXTENSIONS && ALLOWED_EXTENSIONS.length > 0) {
                     const ext = fileName.includes('.') ? '.' + fileName.split('.').pop().toLowerCase() : '';
                     if (ext && !ALLOWED_EXTENSIONS.includes(ext)) {
-                        errors.push(`Dateityp "${ext}" nicht erlaubt. Erlaubt: ${ALLOWED_EXTENSIONS.join(', ')}`);
+                        errors.push(`File type "${ext}" not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`);
                     }
                 }
             }
@@ -1184,9 +1475,9 @@
             if (validationErrors.length > 0) {
                 const errorText = validationErrors.slice(0, 5).join('\n');
                 const remaining = validationErrors.length - 5;
-                const suffix = remaining > 0 ? `\n... und ${remaining} weitere Fehler` : '';
+                const suffix = remaining > 0 ? `\n... and ${remaining} more errors` : '';
                 Toastify({
-                    text: `Validierungsfehler:\n${errorText}${suffix}`,
+                    text: `Validation errors:\n${errorText}${suffix}`,
                     duration: 8000,
                     gravity: "bottom",
                     position: "right",
@@ -1231,17 +1522,19 @@
                 }
             } catch (error) {
                 console.error('Upload failed:', error);
-                let errorMessage = 'Upload fehlgeschlagen';
+                let errorMessage = 'Upload failed';
                 if (error.message.includes('413') || error.message.includes('File too large')) {
-                    errorMessage = 'Datei ist zu groß für den Server. Bitte Kontaktieren Sie den Administrator.';
+                    errorMessage = 'File is too large for the server. Please contact the administrator.';
+                } else if (error.message.toLowerCase().includes('quota')) {
+                    errorMessage = error.message;
                 } else if (error.message.includes('400') || error.message.includes('not allowed')) {
-                    errorMessage = 'Dateityp nicht erlaubt: ' + error.message;
+                    errorMessage = 'File type not allowed: ' + error.message;
                 } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-                    errorMessage = 'Nicht autorisiert. Bitte Seite neu laden und erneut anmelden.';
+                    errorMessage = 'Not authorized. Please reload the page and log in again.';
                 } else if (error.message.includes('403')) {
-                    errorMessage = 'Zugriff verweigert: ' + error.message;
+                    errorMessage = 'Access denied: ' + error.message;
                 } else if (error.message.includes('500')) {
-                    errorMessage = 'Serverfehler. Bitte versuchen Sie es später erneut.';
+                    errorMessage = 'Server error. Please try again later.';
                 }
                 Toastify({
                     text: errorMessage,
@@ -1612,6 +1905,282 @@
         const savedTheme = localStorage.getItem('theme') || 
             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         setTheme(savedTheme);
+    </script>
+
+    <script defer>
+        // --- Guest PIN management (admin only) ---
+        const GUEST_PIN_ADMIN = '{{GUEST_PIN_ADMIN}}';
+        const SHOW_GUEST_ADMIN = ['true', '1', 'yes'].includes(GUEST_PIN_ADMIN.toLowerCase());
+
+        const guestNotify = (text, type) => {
+            Toastify({
+                text,
+                duration: 3000,
+                gravity: "bottom",
+                position: "right",
+                style: { background: type === 'error' ? "#f44336" : "#4CAF50" }
+            }).showToast();
+        };
+
+        const guestFormatBytes = (bytes) => {
+            if (!bytes || bytes <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let size = bytes, i = 0;
+            while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+            return size.toFixed(1) + ' ' + units[i];
+        };
+
+        const guestStatusLabels = {
+            active: 'active',
+            expired: 'expired',
+            'used-up': 'used up',
+            revoked: 'revoked',
+        };
+
+        const guestScanLabel = (status) => {
+            if (!status || status === 'ok' || status === 'clamav-ok') return '<span class="scan-ok">ClamAV: clean</span>';
+            if (status === 'clamav-found') return '<span class="scan-found">ClamAV: INFECTED (deleted)</span>';
+            if (status === 'clamav-error') return '<span class="scan-warn">ClamAV: error</span>';
+            if (status === 'vt-ok') return '<span class="scan-ok">VT: clean</span>';
+            if (status === 'vt-found') return '<span class="scan-found">VT: INFECTED (deleted)</span>';
+            if (status === 'vt-unknown') return '<span class="scan-warn">VT: not analyzed</span>';
+            if (status === 'vt-skipped') return '<span class="scan-warn">VT: skipped</span>';
+            if (status === 'vt-error') return '<span class="scan-warn">VT: error</span>';
+            return '<span class="scan-warn">' + status + '</span>';
+        };
+
+        const guestEscapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        function openGuestSettings() {
+            document.getElementById('guestSettingsModal').style.display = 'flex';
+            // Never leave a previously shown PIN visible when reopening
+            const result = document.getElementById('guest-create-result');
+            if (result) {
+                result.style.display = 'none';
+                document.getElementById('guest-new-pin').textContent = '';
+            }
+            loadGuestPins();
+        }
+
+        function closeGuestSettings() {
+            document.getElementById('guestSettingsModal').style.display = 'none';
+            // Hide the one-time PIN display so it does not linger
+            const result = document.getElementById('guest-create-result');
+            if (result) {
+                result.style.display = 'none';
+                document.getElementById('guest-new-pin').textContent = '';
+            }
+        }
+
+        const loadGuestPins = async () => {
+            const container = document.getElementById('guest-list-container');
+            if (!container) return;
+            try {
+                const response = await fetch('/api/guest-pins', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+                const data = await response.json();
+                const pins = data.pins || [];
+                if (pins.length === 0) {
+                    container.innerHTML = '<div class="loading-message">No guest PINs created yet</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                pins.forEach(pin => {
+                    const item = document.createElement('div');
+                    item.className = 'guest-item';
+
+                    const main = document.createElement('div');
+                    main.className = 'guest-item-main';
+
+                    const info = document.createElement('div');
+                    info.className = 'guest-item-info';
+                    const nameLine = document.createElement('div');
+                    nameLine.className = 'guest-item-name';
+                    nameLine.textContent = pin.name || '(no name)';
+                    const badge = document.createElement('span');
+                    badge.className = 'guest-badge ' + pin.status;
+                    badge.textContent = guestStatusLabels[pin.status] || pin.status;
+                    nameLine.appendChild(badge);
+                    const meta = document.createElement('div');
+                    meta.className = 'guest-item-meta';
+                    const created = new Date(pin.createdAt).toLocaleString();
+                    const expires = pin.expiresAt ? new Date(pin.expiresAt).toLocaleString() : '-';
+                    const uploads = pin.maxUploads > 0 ? `${pin.uploadCount}/${pin.maxUploads}` : `${pin.uploadCount} (unbegrenzt)`;
+                    const size = pin.maxTotalBytes > 0 ? `${guestFormatBytes(pin.totalBytes)} / ${guestFormatBytes(pin.maxTotalBytes)}` : guestFormatBytes(pin.totalBytes);
+                    meta.textContent = `ID: ${pin.id} • Created: ${created} • Expires: ${expires} • Uploads: ${uploads} • Size: ${size}`;
+                    info.appendChild(nameLine);
+                    info.appendChild(meta);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'guest-item-actions';
+                    const logBtn = document.createElement('button');
+                    logBtn.className = 'guest-log-btn';
+                    logBtn.textContent = `Upload log (${(pin.uploads || []).length})`;
+                    logBtn.addEventListener('click', () => toggleGuestLog(pin.id, logBtn));
+                    actions.appendChild(logBtn);
+                    if (pin.status === 'active') {
+                        const revokeBtn = document.createElement('button');
+                        revokeBtn.className = 'guest-revoke-btn';
+                        revokeBtn.textContent = 'Revoke';
+                        revokeBtn.addEventListener('click', () => revokeGuestPin(pin.id));
+                        actions.appendChild(revokeBtn);
+                    } else {
+                        const delBtn = document.createElement('button');
+                        delBtn.className = 'guest-revoke-btn';
+                        delBtn.textContent = 'Delete';
+                        delBtn.addEventListener('click', () => deleteGuestPin(pin.id));
+                        actions.appendChild(delBtn);
+                    }
+
+                    main.appendChild(info);
+                    main.appendChild(actions);
+
+                    const logDiv = document.createElement('div');
+                    logDiv.className = 'guest-log';
+                    logDiv.id = 'guest-log-' + pin.id;
+
+                    item.appendChild(main);
+                    item.appendChild(logDiv);
+                    container.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Failed to load guest PINs:', err);
+            }
+        };
+
+        const toggleGuestLog = async (pinId, btn) => {
+            const logDiv = document.getElementById('guest-log-' + pinId);
+            if (!logDiv) return;
+            if (logDiv.classList.contains('open')) {
+                logDiv.classList.remove('open');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/guest-pins/${encodeURIComponent(pinId)}/uploads`, { credentials: 'include' });
+                if (response.status === 401) { window.location.href = '/login.html'; return; }
+                const data = await response.json();
+                const uploads = data.uploads || [];
+                if (uploads.length === 0) {
+                    logDiv.innerHTML = '<div class="guest-log-empty">No uploads</div>';
+                } else {
+                    const rows = uploads.map(u => {
+                        const time = new Date(u.at).toLocaleString();
+                        return `<tr><td>${guestEscapeHtml(u.filename)}</td><td>${guestFormatBytes(u.size)}</td><td>${time}</td><td>${guestScanLabel(u.scanStatus)}</td></tr>`;
+                    }).join('');
+                    logDiv.innerHTML = `<table><thead><tr><th>File</th><th>Size</th><th>Time</th><th>Scan</th></tr></thead><tbody>${rows}</tbody></table>`;
+                }
+                logDiv.classList.add('open');
+                if (btn) btn.textContent = `Upload-Log (${uploads.length})`;
+            } catch (err) {
+                console.error('Failed to load upload log:', err);
+            }
+        };
+
+        const createGuestPin = async () => {
+            const btn = document.getElementById('create-guest-pin-btn');
+            const ttl = document.getElementById('guest-ttl').value;
+            const maxUploads = document.getElementById('guest-max-uploads').value;
+            const maxMb = document.getElementById('guest-max-mb').value;
+
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api/guest-pins', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ttlMin: ttl || undefined,
+                        maxUploads: maxUploads === '' ? undefined : maxUploads,
+                        maxTotalBytesMB: maxMb === '' ? undefined : maxMb,
+                    }),
+                    credentials: 'include'
+                });
+                if (response.status === 401) { window.location.href = '/login.html'; return; }
+                const data = await response.json();
+                if (!response.ok) {
+                    guestNotify(data.error || 'Failed to create PIN', 'error');
+                    return;
+                }
+                document.getElementById('guest-new-pin').textContent = data.pin;
+                document.getElementById('guest-create-result').style.display = 'block';
+                document.getElementById('guest-ttl').value = '';
+                document.getElementById('guest-max-uploads').value = '';
+                document.getElementById('guest-max-mb').value = '';
+                loadGuestPins();
+            } catch (err) {
+                console.error('Failed to create guest PIN:', err);
+                guestNotify('Failed to create guest PIN', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        const revokeGuestPin = async (pinId) => {
+            if (!confirm('Revoke this guest PIN? It becomes invalid immediately.')) return;
+            try {
+                const response = await fetch(`/api/guest-pins/${encodeURIComponent(pinId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (response.status === 401) { window.location.href = '/login.html'; return; }
+                if (response.ok) {
+                    guestNotify('Guest PIN revoked', 'success');
+                    loadGuestPins();
+                } else {
+                    const data = await response.json();
+                    guestNotify(data.error || 'Failed to revoke PIN', 'error');
+                }
+            } catch (err) {
+                console.error('Failed to revoke guest PIN:', err);
+                guestNotify('Failed to revoke PIN', 'error');
+            }
+        };
+
+        const deleteGuestPin = async (pinId) => {
+            if (!confirm('Delete this guest PIN? Its upload log will be removed permanently.')) return;
+            try {
+                const response = await fetch(`/api/guest-pins/${encodeURIComponent(pinId)}?purge=1`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (response.status === 401) { window.location.href = '/login.html'; return; }
+                if (response.ok) {
+                    guestNotify('Guest PIN deleted', 'success');
+                    loadGuestPins();
+                } else {
+                    const data = await response.json();
+                    guestNotify(data.error || 'Failed to delete PIN', 'error');
+                }
+            } catch (err) {
+                console.error('Failed to delete guest PIN:', err);
+                guestNotify('Failed to delete PIN', 'error');
+            }
+        };
+
+        if (SHOW_GUEST_ADMIN) {
+            document.getElementById('guestSettingsBtn').style.display = 'flex';
+            document.getElementById('create-guest-pin-btn').addEventListener('click', createGuestPin);
+            document.getElementById('guest-copy-pin-btn').addEventListener('click', () => {
+                const pin = document.getElementById('guest-new-pin').textContent;
+                navigator.clipboard.writeText(pin).then(() => {
+                    guestNotify('PIN copied', 'success');
+                }).catch(() => {
+                    guestNotify('Copy failed - copy the PIN manually', 'error');
+                });
+            });
+            // Refresh the list while the modal is open (acts as in-app notification)
+            setInterval(() => {
+                if (document.getElementById('guestSettingsModal').style.display === 'flex') {
+                    loadGuestPins();
+                }
+            }, 10000);
+        }
     </script>
 </body>
 </html>

@@ -12,7 +12,10 @@ const fs = require('fs').promises; // Use promise-based fs
 const fsSync = require('fs'); // For sync checks like existsSync
 const { config } = require('../config');
 const logger = require('../utils/logger');
-const { getUniqueFolderPath, sanitizePathPreserveDirsSafe, isValidBatchId, isPathWithinUploadDir } = require('../utils/fileUtils');
+const { getUniqueFolderPath, sanitizePathPreserveDirsSafe, sanitizeFilenameSafe, isValidBatchId, isPathWithinUploadDir } = require('../utils/fileUtils');
+const { getGuestPinById, getPinStatus, recordGuestUpload } = require('../utils/guestPins');
+const { shouldScanClamav, runClamavScan } = require('../services/clamav');
+const { queueVirusTotalScan } = require('../services/virustotal');
 const { sendNotification } = require('../services/notifications');
 const { isDemoMode } = require('../utils/demoMode');
 const { chunkUploadLimiter } = require('../middleware/rateLimiter');
@@ -27,6 +30,64 @@ const folderMappings = new Map();
 const batchActivity = new Map();
 
 const BATCH_TIMEOUT = 30 * 60 * 1000; // 30 minutes for batch/folderMapping cleanup
+
+// --- Guest Upload Helpers ---
+
+/**
+ * Build the guest upload folder name: <name>_<pinId>_<YYYYMMDD>
+ * @param {Object} guestRecord - Guest PIN record
+ * @returns {string} Folder name
+ */
+function buildGuestFolderName(guestRecord) {
+  const name = sanitizeFilenameSafe(guestRecord.name || 'guest');
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return `${name}_${guestRecord.id}_${date}`;
+}
+
+/**
+ * Run the post-finalization pipeline for a completed upload:
+ * ClamAV scan (if in scope), guest quota accounting, notification,
+ * and optional VirusTotal background scan.
+ * @param {Object} metadata - Upload metadata (filePath, fileSize, guestId, ...)
+ * @returns {Promise<{ok: boolean, scanStatus?: string, reason?: string}>}
+ */
+async function handleCompletedUpload(metadata) {
+  let scanStatus = 'ok';
+  if (shouldScanClamav(!!metadata.guestId)) {
+    const scanResult = await runClamavScan(metadata.filePath);
+    scanStatus = scanResult.status;
+    if (!scanResult.ok) {
+      await fs.unlink(metadata.filePath).catch(() => {});
+      logger.warn(`Upload ${metadata.uploadId} rejected after ClamAV scan (${scanResult.signature || scanResult.error})`);
+      return {
+        ok: false,
+        scanStatus,
+        reason: scanResult.status === 'clamav-found' ? 'malware' : 'scan-error',
+      };
+    }
+  }
+
+  let uploadLogId = null;
+  if (metadata.guestId) {
+    const entry = await recordGuestUpload(metadata.guestId, metadata.fileSize, {
+      filename: metadata.originalFilename,
+      scanStatus,
+    });
+    uploadLogId = entry ? entry.id : null;
+  } else {
+    sendNotification(metadata.originalFilename, metadata.fileSize, config);
+  }
+
+  queueVirusTotalScan({
+    filePath: metadata.filePath,
+    filename: metadata.originalFilename,
+    isGuest: !!metadata.guestId,
+    guestId: metadata.guestId || null,
+    uploadLogId,
+  });
+
+  return { ok: true, scanStatus };
+}
 
 // --- Helper Functions for Metadata ---
 
@@ -185,50 +246,86 @@ router.post('/init', async (req, res) => {
 
     // --- Determine Paths & Handle Folders ---
     const uploadId = crypto.randomBytes(16).toString('hex');
-    let finalFilePath = path.join(config.uploadDir, safeFilename);
-    
-    // Validate that the constructed path is within the upload directory
-    if (!isPathWithinUploadDir(finalFilePath, config.uploadDir, false)) {
-      logger.error(`Path traversal detected in upload init: ${safeFilename} -> ${finalFilePath}`);
-      return res.status(403).json({ error: 'Invalid file path' });
-    }
-    
-    const pathParts = safeFilename.split('/').filter(Boolean);
+    let finalFilePath;
+    let guestId = null;
 
-    if (pathParts.length > 1) {
-      const originalFolderName = pathParts[0];
-      let newFolderName = folderMappings.get(`${originalFolderName}-${batchId}`);
-      const baseFolderPath = path.join(config.uploadDir, newFolderName || originalFolderName);
-
-      if (!newFolderName) {
-        await fs.mkdir(path.dirname(baseFolderPath), { recursive: true });
-        try {
-          await fs.mkdir(baseFolderPath, { recursive: false });
-          newFolderName = originalFolderName;
-        } catch (err) {
-          if (err.code === 'EEXIST') {
-            const uniqueFolderPath = await getUniqueFolderPath(baseFolderPath);
-            newFolderName = path.basename(uniqueFolderPath);
-            logger.info(`Folder "${originalFolderName}" exists or conflict, using unique "${newFolderName}" for batch ${batchId}`);
-            await fs.mkdir(path.join(config.uploadDir, newFolderName), { recursive: true });
-          } else {
-            throw err;
-          }
-        }
-        folderMappings.set(`${originalFolderName}-${batchId}`, newFolderName);
+    if (req.session && req.session.role === 'guest') {
+      // --- Guest upload: dedicated folder per guest PIN ---
+      guestId = req.session.guestId;
+      const guestRecord = await getGuestPinById(guestId);
+      if (!guestRecord || getPinStatus(guestRecord) !== 'active') {
+        logger.warn(`Guest upload init rejected: PIN ${guestId} not active`);
+        return res.status(403).json({ error: 'PIN used up or invalid' });
       }
-      pathParts[0] = newFolderName;
-      finalFilePath = path.join(config.uploadDir, ...pathParts);
-      
-      // Validate the updated path
+      if (guestRecord.maxUploads > 0 && guestRecord.uploadCount >= guestRecord.maxUploads) {
+        logger.warn(`Guest upload init rejected: PIN ${guestId} used up (${guestRecord.uploadCount}/${guestRecord.maxUploads})`);
+        return res.status(403).json({ error: 'PIN used up or invalid' });
+      }
+      if (guestRecord.maxTotalBytes > 0 && guestRecord.totalBytes + size > guestRecord.maxTotalBytes) {
+        logger.warn(`Guest upload init rejected: quota exceeded for PIN ${guestId} (${guestRecord.totalBytes} + ${size} > ${guestRecord.maxTotalBytes})`);
+        return res.status(413).json({
+          error: 'Guest PIN upload quota exceeded',
+          used: guestRecord.totalBytes,
+          limit: guestRecord.maxTotalBytes,
+          remaining: Math.max(0, guestRecord.maxTotalBytes - guestRecord.totalBytes),
+        });
+      }
+
+      const guestFolder = path.join(config.uploadDir, config.guestPinPrefix, buildGuestFolderName(guestRecord));
+      finalFilePath = path.join(guestFolder, safeFilename);
+
       if (!isPathWithinUploadDir(finalFilePath, config.uploadDir, false)) {
-        logger.error(`Path traversal detected after folder mapping: ${pathParts.join('/')} -> ${finalFilePath}`);
+        logger.error(`Path traversal detected in guest upload init: ${safeFilename} -> ${finalFilePath}`);
+        return res.status(403).json({ error: 'Invalid file path' });
+      }
+      await fs.mkdir(path.dirname(finalFilePath), { recursive: true });
+    } else {
+      // --- Regular (admin) upload with folder mapping ---
+      finalFilePath = path.join(config.uploadDir, safeFilename);
+      
+      // Validate that the constructed path is within the upload directory
+      if (!isPathWithinUploadDir(finalFilePath, config.uploadDir, false)) {
+        logger.error(`Path traversal detected in upload init: ${safeFilename} -> ${finalFilePath}`);
         return res.status(403).json({ error: 'Invalid file path' });
       }
       
-      await fs.mkdir(path.dirname(finalFilePath), { recursive: true });
-    } else {
-      await fs.mkdir(config.uploadDir, { recursive: true }); // Ensure base upload dir exists
+      const pathParts = safeFilename.split('/').filter(Boolean);
+
+      if (pathParts.length > 1) {
+        const originalFolderName = pathParts[0];
+        let newFolderName = folderMappings.get(`${originalFolderName}-${batchId}`);
+        const baseFolderPath = path.join(config.uploadDir, newFolderName || originalFolderName);
+
+        if (!newFolderName) {
+          await fs.mkdir(path.dirname(baseFolderPath), { recursive: true });
+          try {
+            await fs.mkdir(baseFolderPath, { recursive: false });
+            newFolderName = originalFolderName;
+          } catch (err) {
+            if (err.code === 'EEXIST') {
+              const uniqueFolderPath = await getUniqueFolderPath(baseFolderPath);
+              newFolderName = path.basename(uniqueFolderPath);
+              logger.info(`Folder "${originalFolderName}" exists or conflict, using unique "${newFolderName}" for batch ${batchId}`);
+              await fs.mkdir(path.join(config.uploadDir, newFolderName), { recursive: true });
+            } else {
+              throw err;
+            }
+          }
+          folderMappings.set(`${originalFolderName}-${batchId}`, newFolderName);
+        }
+        pathParts[0] = newFolderName;
+        finalFilePath = path.join(config.uploadDir, ...pathParts);
+        
+        // Validate the updated path
+        if (!isPathWithinUploadDir(finalFilePath, config.uploadDir, false)) {
+          logger.error(`Path traversal detected after folder mapping: ${pathParts.join('/')} -> ${finalFilePath}`);
+          return res.status(403).json({ error: 'Invalid file path' });
+        }
+        
+        await fs.mkdir(path.dirname(finalFilePath), { recursive: true });
+      } else {
+        await fs.mkdir(config.uploadDir, { recursive: true }); // Ensure base upload dir exists
+      }
     }
 
     // --- Check Final Path Collision & Get Unique Name if Needed ---
@@ -273,6 +370,7 @@ router.post('/init', async (req, res) => {
       fileSize: size,
       bytesReceived: 0,
       batchId,
+      guestId, // null for regular uploads
       createdAt: Date.now(),
       lastActivity: Date.now()
     };
@@ -285,8 +383,13 @@ router.post('/init', async (req, res) => {
       try {
         await fs.writeFile(finalFilePath, ''); // Create the empty file
         logger.success(`Completed zero-byte file upload: ${metadata.originalFilename} as ${finalFilePath}`);
+        const completed = await handleCompletedUpload(metadata);
         await deleteUploadMetadata(uploadId); // Clean up metadata since it's done
-        sendNotification(metadata.originalFilename, 0, config);
+        if (!completed.ok) {
+          return res.status(400).json({ error: completed.reason === 'malware'
+            ? 'File rejected (malware detected)'
+            : 'File could not be scanned - upload rejected' });
+        }
       } catch (writeErr) {
         logger.error(`Failed to create zero-byte file ${finalFilePath}: ${writeErr.message}`);
         await deleteUploadMetadata(uploadId).catch(() => {}); // Attempt cleanup on error
@@ -419,9 +522,15 @@ router.post('/chunk/:uploadId', chunkUploadLimiter, express.raw({
       logger.info(`Upload ${uploadId} (${metadata.originalFilename}) completed ${metadata.bytesReceived} bytes.`);
       try {
         await fs.rename(metadata.partialFilePath, metadata.filePath);
+        const completed = await handleCompletedUpload(metadata);
+        await deleteUploadMetadata(uploadId); // Clean up metadata file AFTER successful rename/scan
+        if (!completed.ok) {
+          logger.warn(`Upload ${uploadId} rejected after scan (${completed.scanStatus})`);
+          return res.status(400).json({ error: completed.reason === 'malware'
+            ? 'File rejected (malware detected)'
+            : 'File could not be scanned - upload rejected' });
+        }
         logger.success(`Upload completed and finalized: ${metadata.originalFilename} as ${metadata.filePath} (${metadata.fileSize} bytes)`);
-        await deleteUploadMetadata(uploadId); // Clean up metadata file AFTER successful rename
-        sendNotification(metadata.originalFilename, metadata.fileSize, config);
       } catch (renameErr) {
         if (renameErr.code === 'ENOENT') {
           logger.warn(`Partial file ${metadata.partialFilePath} not found during finalization for ${uploadId}. Assuming already finalized elsewhere.`);

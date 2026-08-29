@@ -426,7 +426,50 @@
                     credentials: 'include'
                 });
                 const data = await response.json();
-                
+
+                if (data.success && data.requiresName) {
+                    // Guest PIN: ask for the name, then complete the guest login
+                    const name = window.prompt('Please enter your name:');
+                    if (name === null || !name.trim()) {
+                        inputs.forEach(input => {
+                            input.disabled = false;
+                            input.value = '';
+                            input.classList.remove('filled');
+                        });
+                        inputs[0].focus();
+                        setError('Login cancelled');
+                        return;
+                    }
+                    const guestResponse = await fetch('/api/auth/guest-verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name.trim(), pin }),
+                        credentials: 'include'
+                    });
+                    const guestData = await guestResponse.json();
+                    if (guestData.success) {
+                        inputs.forEach(input => {
+                            input.classList.remove('filled');
+                            input.classList.add('success');
+                        });
+                        setError('Login successful', true);
+                        setTimeout(() => { window.location.href = '/'; }, 350);
+                        return;
+                    }
+                    setError(guestData.error || 'Guest login failed');
+                    const guestForm = document.getElementById('pin-form');
+                    guestForm.classList.remove('shake');
+                    void guestForm.offsetWidth;
+                    guestForm.classList.add('shake');
+                    inputs.forEach(input => {
+                        input.disabled = false;
+                        input.value = '';
+                        input.classList.remove('filled');
+                    });
+                    inputs[0].focus();
+                    return;
+                }
+
                 if (data.success) {
                     // Success animation, then redirect
                     inputs.forEach(input => {
